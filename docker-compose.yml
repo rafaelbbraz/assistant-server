@@ -13,7 +13,6 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - LOG_LEVEL=info
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
     env_file:
       - ./.env
     volumes:

@@ -153,6 +153,8 @@ export class SupabaseStorage implements ChatStorage {
         .single();
 
       if (error) throw new Error(`Failed to update message: ${error.message}`);
+      if (!data) throw new Error('Failed to update message: No data returned from database');
+      
       const metadata = data.metadata || {};
       return {
         id: data.uuid,
@@ -204,6 +206,8 @@ export class SupabaseStorage implements ChatStorage {
         .single();
 
       if (error) throw new Error(`Failed to create message: ${error.message}`);
+      if (!data) throw new Error('Failed to create message: No data returned from database');
+      
       const metadata = data.metadata || {};
       return {
         id: data.uuid,

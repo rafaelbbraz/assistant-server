@@ -31,6 +31,8 @@ export class MessageRepository {
         .single();
 
       if (error) throw new Error(`Failed to update message: ${error.message}`);
+      if (!data) throw new Error('Failed to update message: No data returned from database');
+      
       const metadata = data.metadata || {};
       return {
         id: data.uuid,
@@ -82,6 +84,8 @@ export class MessageRepository {
         .single();
 
       if (error) throw new Error(`Failed to create message: ${error.message}`);
+      if (!data) throw new Error('Failed to create message: No data returned from database');
+      
       const metadata = data.metadata || {};
       return {
         id: data.uuid,
@@ -152,10 +156,21 @@ export class MessageRepository {
 
   async getMessageById(messageId: string): Promise<StoredChatMessage | null> {
     const tableName = this.getTableName('messages');
+    const conversationsTable = this.getTableName('conversations');
     
     const { data, error } = await this.supabase
       .from(tableName)
-      .select('*, ' + this.getTableName('conversations') + '!inner(uuid)')
+      .select(`
+        uuid,
+        type,
+        content,
+        status,
+        metadata,
+        parent_message_id,
+        created_at,
+        updated_at,
+        ${conversationsTable}!inner(uuid)
+      `)
       .eq('uuid', messageId)
       .single();
 
@@ -164,11 +179,19 @@ export class MessageRepository {
       throw new Error(`Failed to get message: ${error.message}`);
     }
 
+    if (!data) return null;
+
     const metadata = (data as any).metadata || {};
+    const conversationData = (data as any)[conversationsTable] || (data as any).conversations;
+    
+    if (!conversationData || !conversationData.uuid) {
+      throw new Error('Message missing conversation relationship');
+    }
+
     return {
       id: (data as any).uuid,
-      conversationId: ((data as any).conversations as any).uuid,
-      threadId: ((data as any).conversations as any).uuid,
+      conversationId: conversationData.uuid,
+      threadId: conversationData.uuid,
       role: (data as any).type,
       content: (data as any).content,
       toolCalls: metadata.tool_calls,
