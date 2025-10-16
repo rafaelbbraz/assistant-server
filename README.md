@@ -161,7 +161,7 @@ Deploy to Vercel's serverless platform with one click:
 
 ### One-Click Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_KEY,SUPABASE_DB_HOST,SUPABASE_DB_PORT,SUPABASE_DB_NAME,SUPABASE_DB_USER,SUPABASE_DB_PASSWORD,OPENAI_API_KEY,MIGRATION_SECRET_KEY&envDescription=Required%20environment%20variables&envLink=https://github.com/vezlo/assistant-server/blob/main/env.example)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&integration-ids=oac_f2GcBt8U4FhiVJ4qWv5PYMEZ)
 
 This will:
 - Fork the repository to your GitHub

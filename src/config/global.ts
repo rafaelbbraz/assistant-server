@@ -158,7 +158,7 @@ export const config: GlobalConfig = {
 export function validateConfig(): void {
   const required = [
     'SUPABASE_URL',
-    'SUPABASE_ANON_KEY', 
+    'SUPABASE_SERVICE_KEY', 
     'OPENAI_API_KEY'
   ];
   
