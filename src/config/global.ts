@@ -80,7 +80,7 @@ export const defaultConfig: GlobalConfig = {
   },
   ai: {
     provider: 'openai',
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    model: process.env.AI_MODEL || 'gpt-4o-mini',
     embeddingModel: 'text-embedding-ada-002',
     maxTokens: 4096,
     temperature: 0.7,

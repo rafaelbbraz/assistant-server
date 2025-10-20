@@ -8,7 +8,6 @@ export interface AIServiceConfig {
   temperature?: number;
   maxTokens?: number;
   enableDatabaseSearch?: boolean;
-  enableFeedbackDetection?: boolean;
   navigationLinks?: NavigationLink[];
   existingFeatures?: string[];
   missingFeatures?: string[];
@@ -37,7 +36,6 @@ export interface ChatMessage {
 export interface AIResponse {
   content: string;
   toolResults: DatabaseSearchResult[];
-  feedbackDetection: FeedbackDetection | null;
   suggestedLinks: NavigationLink[];
 }
 
@@ -57,12 +55,6 @@ export interface DatabaseSearchResult {
   data?: any;
 }
 
-export interface FeedbackDetection {
-  type: 'bug_report' | 'feature_request' | 'general_feedback' | 'not_feedback';
-  confidence: number;
-  keyPoints: string[];
-  suggestedAction: string;
-}
 
 export interface NavigationLink {
   label: string;

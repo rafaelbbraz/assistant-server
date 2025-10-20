@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Check if server is built
-const serverPath = path.join(__dirname, '..', 'dist', 'server.js');
+const serverPath = path.join(__dirname, '..', 'dist', 'src', 'server.js');
 
 if (!fs.existsSync(serverPath)) {
   console.error('❌ Error: Server not built. Please run "npm run build" first.');

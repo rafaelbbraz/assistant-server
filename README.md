@@ -32,6 +32,20 @@ cd assistant-server
 npm install
 ```
 
+## 🏪 Vercel Marketplace Integration
+
+**🚀 Recommended for Vercel Users** - Deploy with automated setup:
+
+[![Install on Vercel](https://vercel.com/button)](https://vercel.com/marketplace/vezlo-assistant-server)
+
+The Vercel Marketplace integration provides:
+- **Guided Configuration** - Step-by-step setup wizard
+- **Automatic Environment Setup** - No manual configuration needed
+- **Database Migration** - Automatic table creation
+- **Production Optimization** - Optimized for Vercel's serverless platform
+
+[Learn more about the marketplace integration →](https://vercel.com/marketplace/vezlo-assistant-server)
+
 ## 🚀 Quick Start (Interactive Setup)
 
 ### Prerequisites
@@ -157,19 +171,36 @@ docker-compose logs -f vezlo-server
 
 ## ☁️ Vercel Deployment
 
-Deploy to Vercel's serverless platform with one click:
+Deploy to Vercel's serverless platform with multiple options:
 
-### One-Click Deploy
+### Option 1: Vercel Marketplace Integration (Recommended)
+
+**🚀 Deploy via Vercel Marketplace** - Automated setup with guided configuration:
+
+[![Install on Vercel](https://vercel.com/button)](https://vercel.com/marketplace/vezlo-assistant-server)
+
+**Benefits:**
+- ✅ **Guided Setup** - Step-by-step configuration wizard
+- ✅ **Automatic Environment Variables** - No manual env var configuration needed
+- ✅ **Database Migration** - Automatic table creation and schema setup
+- ✅ **Production Ready** - Optimized for Vercel's serverless platform
+
+**After Installation:**
+1. Run the migration URL provided: `https://your-project.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
+2. Verify deployment: `https://your-project.vercel.app/health`
+3. Access API docs: `https://your-project.vercel.app/docs`
+
+### Option 2: One-Click Deploy Button
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&integration-ids=oac_f2GcBt8U4FhiVJ4qWv5PYMEZ)
 
 This will:
 - Fork the repository to your GitHub
 - Create a Vercel project
-- Prompt for required environment variables
+- Require marketplace integration setup
 - Deploy automatically
 
-### Manual Vercel Deploy
+### Option 3: Manual Vercel Deploy
 
 ```bash
 # Install Vercel CLI
@@ -230,12 +261,6 @@ RATE_LIMIT_MAX=100
 # OPTIONAL - Organization Settings
 ORGANIZATION_NAME=Vezlo
 ASSISTANT_NAME=Vezlo Assistant
-
-# OPTIONAL - Feature Flags
-ENABLE_CACHE=true
-ENABLE_VOICE=true
-ENABLE_GITHUB_SYNC=true
-ENABLE_HUMAN_HANDOFF=true
 
 # OPTIONAL - Knowledge Base
 CHUNK_SIZE=1000
