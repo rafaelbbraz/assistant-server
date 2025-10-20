@@ -39,36 +39,18 @@ function question(prompt) {
 async function main() {
   console.clear();
   log('\n🚀 Vezlo Assistant Server Setup Wizard\n', 'bright');
-  log('This wizard will help you configure your server in 3 easy steps:\n', 'blue');
-  log('  1. Database Connection (Supabase or PostgreSQL)');
+  log('This wizard will help you configure your server in 4 easy steps:\n', 'blue');
+  log('  1. Supabase Database Configuration');
   log('  2. OpenAI API Configuration');
-  log('  3. Automatic Table Creation\n');
+  log('  3. Environment Validation');
+  log('  4. Database Migration Setup\n');
 
-  // Step 1: Database Type Selection
+  // Step 1: Supabase Configuration
   log('\n═══════════════════════════════════════════════════════════', 'cyan');
-  log('  STEP 1: Database Configuration', 'bright');
+  log('  STEP 1: Supabase Database Configuration', 'bright');
   log('═══════════════════════════════════════════════════════════\n', 'cyan');
 
-  log('Choose your database type:');
-  log('  [1] Supabase (Recommended)');
-  log('  [2] PostgreSQL (Direct Connection)');
-  log('  [3] Use existing .env file\n');
-
-  const dbChoice = await question('Enter your choice (1-3):');
-
-  let config = {};
-
-  if (dbChoice === '1') {
-    config = await setupSupabase();
-  } else if (dbChoice === '2') {
-    config = await setupPostgreSQL();
-  } else if (dbChoice === '3') {
-    config = await loadExistingConfig();
-  } else {
-    log('\n❌ Invalid choice. Exiting...', 'red');
-    rl.close();
-    return;
-  }
+  const config = await setupSupabase();
 
   // Step 2: OpenAI Configuration
   log('\n═══════════════════════════════════════════════════════════', 'cyan');
@@ -81,92 +63,149 @@ async function main() {
   const aiModel = await question('AI Model (default: gpt-4o):') || 'gpt-4o';
   config.AI_MODEL = aiModel.trim();
 
+  const aiTemperature = await question('AI Temperature (default: 0.7):') || '0.7';
+  config.AI_TEMPERATURE = aiTemperature.trim();
+
+  const aiMaxTokens = await question('AI Max Tokens (default: 1000):') || '1000';
+  config.AI_MAX_TOKENS = aiMaxTokens.trim();
+
   // Step 3: Save Configuration
   log('\n═══════════════════════════════════════════════════════════', 'cyan');
   log('  STEP 3: Save Configuration', 'bright');
   log('═══════════════════════════════════════════════════════════\n', 'cyan');
 
   const envPath = path.join(process.cwd(), '.env');
-  await saveEnvFile(envPath, config);
-
-  log('\n✅ Configuration saved to .env', 'green');
-
-  // Step 4: Database Setup
-  log('\n═══════════════════════════════════════════════════════════', 'cyan');
-  log('  STEP 4: Database Setup', 'bright');
-  log('═══════════════════════════════════════════════════════════\n', 'cyan');
-
-  const setupDb = await question('Setup database tables now? (y/n):');
-
-  if (setupDb.toLowerCase() === 'y') {
-    await setupDatabase(config);
+  log('Preparing to write environment configuration (.env)...', 'yellow');
+  const createdEnv = await saveEnvFile(envPath, config);
+  if (createdEnv) {
+    log(`✅ Configuration saved to ${envPath}`, 'green');
   } else {
-    log('\n⚠️  Skipping database setup.', 'yellow');
-    log('   Run "npx vezlo-setup-db" later to create tables.\n', 'yellow');
+    log('ℹ️  Using existing .env (no overwrite). Review values as needed.', 'yellow');
   }
 
-  // Final Instructions
+  // Step 4: Environment Validation
+  log('\n═══════════════════════════════════════════════════════════', 'cyan');
+  log('  STEP 4: Environment Validation', 'bright');
+  log('═══════════════════════════════════════════════════════════\n', 'cyan');
+
+  const validationStatus = await validateEnvironment(config);
+
+  // Step 5: Database Migration Setup
+  log('\n═══════════════════════════════════════════════════════════', 'cyan');
+  log('  STEP 5: Database Migration Setup', 'bright');
+  log('═══════════════════════════════════════════════════════════\n', 'cyan');
+
+  const migrationStatus = await setupMigrations(config, validationStatus) || { migrations: 'skipped' };
+
+  // Final Instructions / Summary
   log('\n═══════════════════════════════════════════════════════════', 'green');
   log('  🎉 Setup Complete!', 'bright');
   log('═══════════════════════════════════════════════════════════\n', 'green');
 
-  log('Next steps:');
+  // Summary
+  log('Summary:', 'bright');
+  log(`  Supabase API: ${validationStatus.supabaseApi === 'success' ? colors.green + 'OK' : colors.red + 'FAILED'}${colors.reset}`);
+  log(`  Database: ${validationStatus.database === 'success' ? colors.green + 'OK' : colors.red + (validationStatus.database === 'skipped' ? 'SKIPPED' : 'FAILED')}${colors.reset}`);
+  log(`  Migrations: ${migrationStatus.migrations === 'success' ? colors.green + 'OK' : migrationStatus.migrations === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
+
+  log('\nNext steps:');
   log('  1. Review your .env file');
   log('  2. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
   log('  3. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
-  log('  4. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset + '\n');
+  log('  4. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
+  log('  5. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
 
   rl.close();
+  // Ensure graceful exit even if any handles remain
+  setImmediate(() => process.exit(0));
 }
 
 async function setupSupabase() {
   log('\n📦 Supabase Configuration\n', 'blue');
   log('You can find these values in your Supabase Dashboard:', 'yellow');
-  log('  Settings > API > Project URL & API Keys\n', 'yellow');
+  log('  • API keys & URL: Settings > API > Project URL & API Keys', 'yellow');
+  log('  • Database params: Settings > Database > Connection info', 'yellow');
+  log('  • Optional pooling: Connect > Connection Pooling > Session Pooler > View parameters\n', 'yellow');
 
+  // Get Supabase URL and extract project ID for defaults
   const supabaseUrl = await question('Supabase Project URL (https://xxx.supabase.co):');
-  const supabaseAnonKey = await question('Supabase Anon Key:');
-  const supabaseServiceKey = await question('Supabase Service Role Key:');
-
-  // Validate connection
-  log('\n🔄 Testing connection...', 'yellow');
-
-  try {
-    const client = createClient(supabaseUrl.trim(), supabaseServiceKey.trim());
-    const { data, error } = await client.from('_test').select('*').limit(1);
-
-    // This will fail but confirms we can connect
-    if (error && error.code !== 'PGRST204' && error.code !== '42P01') {
-      log(`\n⚠️  Warning: ${error.message}`, 'yellow');
-      log('Continuing with setup...\n', 'yellow');
-    } else {
-      log('✅ Connection successful!\n', 'green');
-    }
-  } catch (err) {
-    log(`\n⚠️  Warning: Could not verify connection`, 'yellow');
-    log('Continuing with setup...\n', 'yellow');
+  const projectId = supabaseUrl.match(/https:\/\/(.+?)\.supabase\.co/)?.[1];
+  
+  if (!projectId) {
+    log('\n❌ Invalid Supabase URL format. Please use: https://your-project.supabase.co', 'red');
+    throw new Error('Invalid Supabase URL');
   }
 
-  // Extract database connection info from Supabase URL
-  const projectId = supabaseUrl.match(/https:\/\/(.+?)\.supabase\.co/)?.[1];
-  const dbHost = projectId ? `db.${projectId}.supabase.co` : '';
+  const supabaseServiceKey = await question('Supabase Service Role Key:');
+  const supabaseAnonKey = await question('Supabase Anon Key (optional, press Enter to skip):');
 
-  log('Database connection details:', 'blue');
-  log(`  Host: ${dbHost}`);
-  log(`  Port: 5432`);
-  log(`  Database: postgres`);
-  log(`  User: postgres\n`);
+  // Show defaults and ask for each database parameter
+  log('\n📊 Database Connection Details:', 'blue');
+  
+  const dbHost = await question(`Database Host (default: db.${projectId}.supabase.co):`) || `db.${projectId}.supabase.co`;
+  const dbPort = await question('Database Port (default: 5432):') || '5432';
+  const dbName = await question('Database Name (default: postgres):') || 'postgres';
+  const dbUser = await question(`Database User (default: postgres.${projectId}):`) || `postgres.${projectId}`;
+  const dbPassword = await question('Database Password (from Settings > Database):');
 
-  const dbPassword = await question('Supabase Database Password (from Settings > Database):');
+  // Validate Supabase connection (same as validate script)
+  log('\n🔄 Validating Supabase connection...', 'yellow');
+  
+  try {
+    const client = createClient(supabaseUrl.trim(), supabaseServiceKey.trim());
+    const { error } = await client.from('vezlo_conversations').select('count').limit(0);
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    log('✅ Supabase connection successful!\n', 'green');
+  } catch (err) {
+    log(`❌ Supabase connection failed: ${err.message}`, 'red');
+    throw new Error('Supabase connection validation failed');
+  }
+
+  // Validate database connection (same as validate script)
+  log('🔄 Validating database connection...', 'yellow');
+  
+  let client;
+  try {
+    const { Client } = require('pg');
+    
+    client = new Client({
+      host: dbHost.trim(),
+      port: parseInt(dbPort.trim()),
+      database: dbName.trim(),
+      user: dbUser.trim(),
+      password: dbPassword.trim(),
+      ssl: { rejectUnauthorized: false }
+    });
+
+    // Handle connection errors quietly for normal shutdowns
+    client.on('error', (err) => {
+      const msg = (err && err.message) ? err.message : String(err);
+      if (msg && (msg.includes('client_termination') || msg.includes(':shutdown'))) {
+        return; // ignore normal termination noise
+      }
+      console.error('Database connection error:', msg);
+    });
+
+    await client.connect();
+    log('✅ Database connection successful!\n', 'green');
+    await client.end();
+  } catch (err) {
+    log(`❌ Database connection failed: ${err.message}`, 'red');
+    throw new Error('Database connection validation failed');
+  }
 
   return {
     SUPABASE_URL: supabaseUrl.trim(),
-    SUPABASE_ANON_KEY: supabaseAnonKey.trim(),
+    SUPABASE_ANON_KEY: supabaseAnonKey.trim() || '',
     SUPABASE_SERVICE_KEY: supabaseServiceKey.trim(),
-    SUPABASE_DB_HOST: dbHost,
-    SUPABASE_DB_PORT: '5432',
-    SUPABASE_DB_NAME: 'postgres',
-    SUPABASE_DB_USER: 'postgres',
+    SUPABASE_DB_HOST: dbHost.trim(),
+    SUPABASE_DB_PORT: dbPort.trim(),
+    SUPABASE_DB_NAME: dbName.trim(),
+    SUPABASE_DB_USER: dbUser.trim(),
     SUPABASE_DB_PASSWORD: dbPassword.trim(),
     PORT: '3000',
     NODE_ENV: 'development',
@@ -174,53 +213,26 @@ async function setupSupabase() {
   };
 }
 
-async function setupPostgreSQL() {
-  log('\n🗄️  PostgreSQL Configuration\n', 'blue');
+// Handle errors and cleanup
+process.on('SIGINT', () => {
+  log('\n\n⚠️  Setup cancelled by user', 'yellow');
+  rl.close();
+  process.exit(0);
+});
 
-  const host = await question('Database Host (localhost):') || 'localhost';
-  const port = await question('Database Port (5432):') || '5432';
-  const database = await question('Database Name (postgres):') || 'postgres';
-  const user = await question('Database User (postgres):') || 'postgres';
-  const password = await question('Database Password:');
-
-  return {
-    SUPABASE_DB_HOST: host.trim(),
-    SUPABASE_DB_PORT: port.trim(),
-    SUPABASE_DB_NAME: database.trim(),
-    SUPABASE_DB_USER: user.trim(),
-    SUPABASE_DB_PASSWORD: password.trim(),
-    PORT: '3000',
-    NODE_ENV: 'development',
-    CORS_ORIGINS: 'http://localhost:3000,http://localhost:5173'
-  };
-}
-
-async function loadExistingConfig() {
-  const envPath = path.join(process.cwd(), '.env');
-
-  if (!fs.existsSync(envPath)) {
-    log('\n❌ No .env file found in current directory', 'red');
-    throw new Error('.env file not found');
-  }
-
-  log('\n✅ Loading configuration from .env\n', 'green');
-
-  const envContent = fs.readFileSync(envPath, 'utf8');
-  const config = {};
-
-  envContent.split('\n').forEach(line => {
-    const match = line.match(/^([^=:#]+)=(.*)$/);
-    if (match) {
-      const key = match[1].trim();
-      const value = match[2].trim();
-      config[key] = value;
-    }
-  });
-
-  return config;
-}
+// Run the wizard
+main().catch(error => {
+  log(`\n❌ Setup failed: ${error.message}`, 'red');
+  rl.close();
+  process.exit(1);
+});
 
 async function saveEnvFile(envPath, config) {
+  // Don't overwrite existing .env
+  if (fs.existsSync(envPath)) {
+    log('\n⚠️  .env already exists. Skipping overwrite. Please review values manually.', 'yellow');
+    return false;
+  }
   const envContent = `# Vezlo Assistant Server Configuration
 # Generated by setup wizard on ${new Date().toISOString()}
 
@@ -251,8 +263,8 @@ SUPABASE_DB_PASSWORD=${config.SUPABASE_DB_PASSWORD || ''}
 # OpenAI Configuration
 OPENAI_API_KEY=${config.OPENAI_API_KEY || 'sk-your-openai-api-key'}
 AI_MODEL=${config.AI_MODEL || 'gpt-4o'}
-AI_TEMPERATURE=0.7
-AI_MAX_TOKENS=1000
+AI_TEMPERATURE=${config.AI_TEMPERATURE || '0.7'}
+AI_MAX_TOKENS=${config.AI_MAX_TOKENS || '1000'}
 
 # Organization Settings
 ORGANIZATION_NAME=Vezlo
@@ -264,17 +276,76 @@ CHUNK_OVERLAP=200
 `;
 
   fs.writeFileSync(envPath, envContent, 'utf8');
+  return true;
 }
 
-async function setupDatabase(config) {
-  log('\n🔄 Setting up database tables...', 'yellow');
+async function validateEnvironment(config) {
+  log('🔄 Validating environment configuration...', 'yellow');
+
+  // Test Supabase connection (same as validate script)
+  try {
+    const client = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY);
+    const { error } = await client.from('vezlo_conversations').select('count').limit(0);
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    log('✅ Supabase API connection validated', 'green');
+  } catch (err) {
+    log(`❌ Supabase API validation failed: ${err.message}`, 'red');
+    // non-blocking
+    return { supabaseApi: 'failed', database: 'skipped' };
+  }
+
+  // Test database connection (same as validate script)
+  let client;
+  try {
+    const { Client } = require('pg');
+    
+    client = new Client({
+      host: config.SUPABASE_DB_HOST,
+      port: parseInt(config.SUPABASE_DB_PORT),
+      database: config.SUPABASE_DB_NAME,
+      user: config.SUPABASE_DB_USER,
+      password: config.SUPABASE_DB_PASSWORD,
+      ssl: { rejectUnauthorized: false }
+    });
+
+    // Handle connection errors quietly for normal shutdowns
+    client.on('error', (err) => {
+      const msg = (err && err.message) ? err.message : String(err);
+      if (msg && (msg.includes('client_termination') || msg.includes(':shutdown'))) {
+        return; // ignore normal termination noise
+      }
+      console.error('Database connection error:', msg);
+    });
+
+    await client.connect();
+    log('✅ Database connection validated', 'green');
+    await client.end();
+  } catch (err) {
+    log(`❌ Database validation failed: ${err.message}`, 'red');
+    return { supabaseApi: 'success', database: 'failed' };
+  }
+
+  log('✅ Environment validation complete!\n', 'green');
+  return { supabaseApi: 'success', database: 'success' };
+}
+
+async function setupMigrations(config, validationStatus) {
+  log('🔄 Checking migration status...', 'yellow');
+
+  if (validationStatus.database !== 'success') {
+    log('⚠️  Skipping migrations because database validation failed.', 'yellow');
+    return { migrations: 'skipped' };
+  }
 
   try {
     const { Client } = require('pg');
-
     const client = new Client({
       host: config.SUPABASE_DB_HOST,
-      port: parseInt(config.SUPABASE_DB_PORT || '5432'),
+      port: parseInt(config.SUPABASE_DB_PORT),
       database: config.SUPABASE_DB_NAME,
       user: config.SUPABASE_DB_USER,
       password: config.SUPABASE_DB_PASSWORD,
@@ -282,45 +353,70 @@ async function setupDatabase(config) {
     });
 
     await client.connect();
-    log('✅ Connected to database', 'green');
 
-    // Read schema file
-    const schemaPath = path.join(__dirname, '..', 'database-schema.sql');
-
-    if (!fs.existsSync(schemaPath)) {
-      log('❌ database-schema.sql not found', 'red');
-      return;
-    }
-
-    const schema = fs.readFileSync(schemaPath, 'utf8');
-
-    log('🔄 Creating tables...', 'yellow');
-    await client.query(schema);
-
-    log('✅ Database tables created successfully!', 'green');
-
-    // Verify tables
-    const result = await client.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-      AND table_name IN ('conversations', 'messages', 'message_feedback', 'knowledge_items')
-      ORDER BY table_name
+    // Check if migrations table exists
+    const migrationTableExists = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'knex_migrations'
+      );
     `);
 
-    log('\n📊 Verified tables:', 'blue');
-    result.rows.forEach(row => {
-      log(`   ✓ ${row.table_name}`, 'green');
-    });
-    log('');
+    if (!migrationTableExists.rows[0].exists) {
+      log('📋 No migrations table found. Database needs initial setup.', 'blue');
+      
+      const runMigrations = await question('Run initial database migrations now? (y/n):');
+      
+      if (runMigrations.toLowerCase() === 'y') {
+        log('🔄 Running migrations...', 'yellow');
+        
+        // Set environment variables for migration
+        process.env.SUPABASE_DB_HOST = config.SUPABASE_DB_HOST;
+        process.env.SUPABASE_DB_PORT = config.SUPABASE_DB_PORT;
+        process.env.SUPABASE_DB_NAME = config.SUPABASE_DB_NAME;
+        process.env.SUPABASE_DB_USER = config.SUPABASE_DB_USER;
+        process.env.SUPABASE_DB_PASSWORD = config.SUPABASE_DB_PASSWORD;
+        
+        const { execSync } = require('child_process');
+        execSync('npm run migrate:latest', { stdio: 'inherit' });
+        
+        log('✅ Migrations completed successfully!', 'green');
+        return { migrations: 'success' };
+      } else {
+        log('\n⚠️  Migrations skipped. You can run them later using:', 'yellow');
+        log('   npm run migrate:latest', 'cyan');
+        log('   Or via API: GET /api/migrate?key=your-migration-secret\n', 'cyan');
+        return { migrations: 'skipped' };
+      }
+    } else {
+      // Check migration status
+      const migrationStatus = await client.query(`
+        SELECT COUNT(*) as count FROM knex_migrations;
+      `);
+      
+      log(`📊 Found ${migrationStatus.rows[0].count} completed migrations`, 'blue');
+      
+      const runPending = await question('Check for pending migrations? (y/n):');
+      
+      if (runPending.toLowerCase() === 'y') {
+        log('🔄 Checking for pending migrations...', 'yellow');
+        
+        const { execSync } = require('child_process');
+        execSync('npm run migrate:latest', { stdio: 'inherit' });
+        
+        log('✅ Migration check completed!', 'green');
+        return { migrations: 'success' };
+      }
+    }
 
     await client.end();
-
-  } catch (error) {
-    log(`\n❌ Database setup failed: ${error.message}`, 'red');
-    log('\nYou can manually run the setup later:', 'yellow');
-    log('  1. Copy database-schema.sql to your Supabase SQL Editor', 'yellow');
-    log('  2. Execute the SQL to create tables\n', 'yellow');
+  } catch (err) {
+    log(`❌ Migration setup failed: ${err.message}`, 'red');
+    log('\nYou can run migrations manually later:', 'yellow');
+    log('   npm run migrate:latest', 'cyan');
+    log('   Or via API: GET /api/migrate?key=your-migration-secret\n', 'cyan');
+    return { migrations: 'failed' };
   }
 }
 
