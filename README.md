@@ -172,7 +172,7 @@ docker-compose logs -f vezlo-server
 
 ## ☁️ Vercel Deployment
 
-Deploy to Vercel's serverless platform with multiple options:
+Deploy to Vercel's serverless platform with multiple options. The Marketplace integration collects your credentials during configuration and sets environment variables automatically.
 
 ### Option 1: Vercel Marketplace Integration (Recommended)
 
@@ -187,7 +187,7 @@ Deploy to Vercel's serverless platform with multiple options:
 - ✅ **Production Ready** - Optimized for Vercel's serverless platform
 
 **After Installation:**
-1. Run the migration URL provided: `https://your-project.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
+1. Run the migration URL: `https://your-project.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
 2. Verify deployment: `https://your-project.vercel.app/health`
 3. Access API docs: `https://your-project.vercel.app/docs`
 
@@ -215,9 +215,9 @@ vercel
 
 ### Prerequisites for Vercel
 
-1. **Setup Database First**: Run `vezlo-setup` locally or execute `database-schema.sql` in Supabase
-2. **Get Credentials**: Collect Supabase and OpenAI credentials
-3. **Configure Environment Variables** in Vercel project settings
+1. Supabase project (URL, Service Role key, DB host/port/name/user/password)
+2. OpenAI API key
+3. If not using the Marketplace, add environment variables in Vercel project settings
 
 See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for detailed deployment guide.
 
@@ -228,7 +228,6 @@ Edit `.env` file with your credentials:
 ```bash
 # REQUIRED - Supabase Configuration
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 
 # REQUIRED - Database Configuration for Knex.js Migrations
@@ -419,19 +418,32 @@ curl -X POST /api/messages/msg456/generate \
 
 ## 🗄️ Database Setup
 
-Run the SQL schema in your Supabase SQL Editor:
+### Option A: Run Migrations (Recommended)
+
+Use the built‑in migration endpoints to create/upgrade tables:
 
 ```bash
-# Copy the database schema file
-cp database-schema.sql /path/to/your/supabase/sql-editor
+# Run pending migrations
+curl "http://localhost:3000/api/migrate?key=your-migration-secret-key"
+
+# Check migration status
+curl "http://localhost:3000/api/migrate/status?key=your-migration-secret-key"
 ```
 
-The `database-schema.sql` file contains all necessary tables and functions:
-- **conversations** - Chat conversation management
-- **messages** - Individual messages within conversations  
-- **message_feedback** - User feedback on messages
-- **knowledge_items** - Knowledge base items with vector embeddings
-- **match_knowledge_items()** - Vector similarity search function
+These endpoints execute Knex migrations and keep schema versioned.
+
+### Option B: Manual SQL (Fallback)
+
+If you prefer manual setup, run the SQL schema in Supabase SQL Editor:
+
+```bash
+# View the schema SQL locally
+cat database-schema.sql
+
+# Copy into Supabase Dashboard → SQL Editor and execute
+```
+
+The `database-schema.sql` contains all required tables and functions.
 
 ## 🐳 Docker Commands
 
@@ -504,8 +516,11 @@ npm install
 # Build TypeScript
 npm run build
 
-# Start development server
-npm run dev
+# Start server (Node)
+npm start
+
+# Or start via CLI wrapper
+npx vezlo-server
 
 # Run tests
 npm test

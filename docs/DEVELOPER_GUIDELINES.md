@@ -17,6 +17,12 @@ The Vezlo Server follows a **layered architecture** with clear separation of con
 ```
 
 ## 🔑 Core Development Principles
+## 🚀 Deployment Entry Points
+
+- Vercel deployments run through `api/index.ts` (serverless function). All endpoints intended for Vercel must be registered here.
+- Non‑Vercel (Docker/bare Node) deployments run through `src/server.ts`. All endpoints intended for long‑running servers must be registered here.
+- When adding or changing routes, update both files accordingly to keep behavior consistent across deployment targets.
+
 
 ### 1. **ID vs UUID Pattern**
 - **Internal Database**: Use `id` (integer) for all database relations
@@ -165,6 +171,10 @@ DELETE /api/conversations/{uuid}           # Delete conversation
 GET    /api/conversations/{uuid}/messages   # Get messages
 POST   /api/conversations/{uuid}/messages   # Create message
 POST   /api/messages/{uuid}/generate       # Generate AI response
+
+# Migration endpoints (keep Vercel and server.ts in sync)
+GET    /api/migrate                         # Run pending DB migrations (requires MIGRATION_SECRET_KEY)
+GET    /api/migrate/status                  # Check migration status (requires MIGRATION_SECRET_KEY)
 ```
 
 #### **2-API Conversation Flow**
@@ -203,14 +213,27 @@ import { ConversationService } from '../services';
 
 #### **Required Environment Variables**
 ```bash
-# Database
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
+# Supabase
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_KEY=your_service_role_key
 
-# AI Service
-OPENAI_API_KEY=your_openai_api_key
+# Database for Knex migrations
+SUPABASE_DB_HOST=db.<project>.supabase.co
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
+SUPABASE_DB_PASSWORD=<your_db_password>
 
-# Server Configuration
+# OpenAI
+OPENAI_API_KEY=sk-...
+AI_MODEL=gpt-4o
+AI_TEMPERATURE=0.7
+AI_MAX_TOKENS=1000
+
+# Migration security
+MIGRATION_SECRET_KEY=<secure-random-key>
+
+# Server
 PORT=3000
 NODE_ENV=development
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
@@ -224,7 +247,16 @@ CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
 ```
 
-### 10. **Security & Performance Guidelines**
+Note: `SUPABASE_ANON_KEY` is optional in code and not required when `SUPABASE_SERVICE_KEY` is provided. Prefer using the service key on the server.
+
+### 10. Migration Endpoints Consistency
+
+- If you modify migration behavior or payloads, update both implementations:
+  - Vercel: `api/migrate.ts` and `api/migrate/status.ts`
+  - Non‑Vercel: handlers in `src/server.ts`
+- Verify auth (via `MIGRATION_SECRET_KEY`) and responses are consistent.
+
+### 11. **Security & Performance Guidelines**
 
 #### **Input Validation**
 - Validate all input parameters
