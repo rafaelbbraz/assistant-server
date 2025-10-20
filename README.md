@@ -50,7 +50,7 @@ The Vercel Marketplace integration provides:
 
 ### Prerequisites
 - Node.js 20+ and npm 9+
-- Supabase project (or PostgreSQL database)
+- Supabase project
 - OpenAI API key
 
 ### Easy Setup with Interactive Wizard
@@ -69,10 +69,11 @@ npm run setup
 ```
 
 The wizard will guide you through:
-1. **Database Configuration** - Choose Supabase or PostgreSQL
-2. **OpenAI API Setup** - Configure your AI model
-3. **Automatic Table Creation** - Creates all required database tables
-4. **Environment File Generation** - Saves configuration to .env
+1. **Supabase Configuration** - URL, Service Role Key, DB host/port/name/user/password (with defaults)
+2. **OpenAI Configuration** - API key, model, temperature, max tokens
+3. **Validation (non‑blocking)** - Tests Supabase API and DB connectivity
+4. **Migrations** - Runs Knex migrations if DB validation passes; otherwise shows how to run later
+5. **Environment** - Generates `.env` (does not overwrite if it already exists)
 
 After setup completes, start the server:
 
@@ -121,19 +122,19 @@ AI_MODEL=gpt-4o
 MIGRATION_SECRET_KEY=your-secure-migration-key-here
 ```
 
-#### 3. Setup Database Tables
-
-**Option A: Automated Setup**
+#### 3. Run Database Migrations (Recommended)
 ```bash
-vezlo-setup  # Run wizard and choose option 3 to use existing .env
+# Using Knex migrations (primary method)
+npm run migrate:latest
+
+# Or via API after server is running
+curl "http://localhost:3000/api/migrate?key=$MIGRATION_SECRET_KEY"
 ```
 
-**Option B: Manual SQL**
+Optional fallback (not recommended if using migrations):
 ```bash
-# Copy schema to Supabase SQL Editor
+# Run raw SQL in Supabase Dashboard → SQL Editor
 cat database-schema.sql
-
-# Then execute in Supabase Dashboard → SQL Editor
 ```
 
 #### 4. Validate Setup
@@ -162,7 +163,7 @@ npm run build && npm start
 ### Docker Deployment
 
 ```bash
-# Start with Docker Compose
+# Start with Docker Compose (uses .env from project root)
 docker-compose up -d
 
 # View logs
