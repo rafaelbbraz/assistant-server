@@ -644,4 +644,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 1.3.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 1.4.0 | **Node.js**: 20+ | **TypeScript**: 5+
