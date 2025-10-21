@@ -74,10 +74,11 @@ async function validateDatabase() {
   // Test database connection and validate tables
   log('Validating database tables...', 'yellow');
 
+  let client;
   try {
     const { Client } = require('pg');
 
-    const client = new Client({
+    client = new Client({
       host: process.env.SUPABASE_DB_HOST,
       port: parseInt(process.env.SUPABASE_DB_PORT || '5432'),
       database: process.env.SUPABASE_DB_NAME || 'postgres',
@@ -86,14 +87,19 @@ async function validateDatabase() {
       ssl: { rejectUnauthorized: false }
     });
 
+    // Handle connection errors
+    client.on('error', (err) => {
+      console.error('Database connection error:', err.message);
+    });
+
     await client.connect();
 
     // Check required tables
     const requiredTables = [
-      'conversations',
-      'messages',
-      'message_feedback',
-      'knowledge_items'
+      'vezlo_conversations',
+      'vezlo_messages',
+      'vezlo_message_feedback',
+      'vezlo_knowledge_items'
     ];
 
     const result = await client.query(`
@@ -111,7 +117,9 @@ async function validateDatabase() {
       log(`\n❌ Missing required tables:`, 'red');
       missingTables.forEach(table => log(`   - ${table}`, 'red'));
       log('\nRun the setup wizard: ' + colors.bright + 'npx vezlo-setup' + colors.reset + '\n', 'yellow');
-      await client.end();
+      if (client) {
+        await client.end();
+      }
       process.exit(1);
     }
 
@@ -156,10 +164,19 @@ async function validateDatabase() {
     log('Your server is ready to start:', 'cyan');
     log('  ' + colors.bright + 'vezlo-server' + colors.reset + '\n');
 
-    await client.end();
+    if (client) {
+      await client.end();
+    }
 
   } catch (error) {
     log(`\n❌ Database validation failed: ${error.message}\n`, 'red');
+    if (client) {
+      try {
+        await client.end();
+      } catch (closeError) {
+        // Ignore close errors
+      }
+    }
     process.exit(1);
   }
 }

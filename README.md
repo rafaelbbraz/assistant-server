@@ -32,11 +32,25 @@ cd assistant-server
 npm install
 ```
 
+## 🏪 Vercel Marketplace Integration
+
+**🚀 Recommended for Vercel Users** - Deploy with automated setup:
+
+[![Install on Vercel](https://vercel.com/button)](https://vercel.com/marketplace/vezlo-assistant-server)
+
+The Vercel Marketplace integration provides:
+- **Guided Configuration** - Step-by-step setup wizard
+- **Automatic Environment Setup** - No manual configuration needed
+- **Database Migration** - Automatic table creation
+- **Production Optimization** - Optimized for Vercel's serverless platform
+
+[Learn more about the marketplace integration →](https://vercel.com/marketplace/vezlo-assistant-server)
+
 ## 🚀 Quick Start (Interactive Setup)
 
 ### Prerequisites
 - Node.js 20+ and npm 9+
-- Supabase project (or PostgreSQL database)
+- Supabase project
 - OpenAI API key
 
 ### Easy Setup with Interactive Wizard
@@ -55,10 +69,11 @@ npm run setup
 ```
 
 The wizard will guide you through:
-1. **Database Configuration** - Choose Supabase or PostgreSQL
-2. **OpenAI API Setup** - Configure your AI model
-3. **Automatic Table Creation** - Creates all required database tables
-4. **Environment File Generation** - Saves configuration to .env
+1. **Supabase Configuration** - URL, Service Role Key, DB host/port/name/user/password (with defaults)
+2. **OpenAI Configuration** - API key, model, temperature, max tokens
+3. **Validation (non‑blocking)** - Tests Supabase API and DB connectivity
+4. **Migrations** - Runs Knex migrations if DB validation passes; otherwise shows how to run later
+5. **Environment** - Generates `.env` (does not overwrite if it already exists)
 
 After setup completes, start the server:
 
@@ -107,19 +122,19 @@ AI_MODEL=gpt-4o
 MIGRATION_SECRET_KEY=your-secure-migration-key-here
 ```
 
-#### 3. Setup Database Tables
-
-**Option A: Automated Setup**
+#### 3. Run Database Migrations (Recommended)
 ```bash
-vezlo-setup  # Run wizard and choose option 3 to use existing .env
+# Using Knex migrations (primary method)
+npm run migrate:latest
+
+# Or via API after server is running
+curl "http://localhost:3000/api/migrate?key=$MIGRATION_SECRET_KEY"
 ```
 
-**Option B: Manual SQL**
+Optional fallback (not recommended if using migrations):
 ```bash
-# Copy schema to Supabase SQL Editor
+# Run raw SQL in Supabase Dashboard → SQL Editor
 cat database-schema.sql
-
-# Then execute in Supabase Dashboard → SQL Editor
 ```
 
 #### 4. Validate Setup
@@ -148,7 +163,7 @@ npm run build && npm start
 ### Docker Deployment
 
 ```bash
-# Start with Docker Compose
+# Start with Docker Compose (uses .env from project root)
 docker-compose up -d
 
 # View logs
@@ -157,19 +172,36 @@ docker-compose logs -f vezlo-server
 
 ## ☁️ Vercel Deployment
 
-Deploy to Vercel's serverless platform with one click:
+Deploy to Vercel's serverless platform with multiple options. The Marketplace integration collects your credentials during configuration and sets environment variables automatically.
 
-### One-Click Deploy
+### Option 1: Vercel Marketplace Integration (Recommended)
+
+**🚀 Deploy via Vercel Marketplace** - Automated setup with guided configuration:
+
+[![Install on Vercel](https://vercel.com/button)](https://vercel.com/marketplace/vezlo-assistant-server)
+
+**Benefits:**
+- ✅ **Guided Setup** - Step-by-step configuration wizard
+- ✅ **Automatic Environment Variables** - No manual env var configuration needed
+- ✅ **Database Migration** - Automatic table creation and schema setup
+- ✅ **Production Ready** - Optimized for Vercel's serverless platform
+
+**After Installation:**
+1. Run the migration URL: `https://your-project.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
+2. Verify deployment: `https://your-project.vercel.app/health`
+3. Access API docs: `https://your-project.vercel.app/docs`
+
+### Option 2: One-Click Deploy Button
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&integration-ids=oac_f2GcBt8U4FhiVJ4qWv5PYMEZ)
 
 This will:
 - Fork the repository to your GitHub
 - Create a Vercel project
-- Prompt for required environment variables
+- Require marketplace integration setup
 - Deploy automatically
 
-### Manual Vercel Deploy
+### Option 3: Manual Vercel Deploy
 
 ```bash
 # Install Vercel CLI
@@ -183,9 +215,9 @@ vercel
 
 ### Prerequisites for Vercel
 
-1. **Setup Database First**: Run `vezlo-setup` locally or execute `database-schema.sql` in Supabase
-2. **Get Credentials**: Collect Supabase and OpenAI credentials
-3. **Configure Environment Variables** in Vercel project settings
+1. Supabase project (URL, Service Role key, DB host/port/name/user/password)
+2. OpenAI API key
+3. If not using the Marketplace, add environment variables in Vercel project settings
 
 See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for detailed deployment guide.
 
@@ -196,7 +228,6 @@ Edit `.env` file with your credentials:
 ```bash
 # REQUIRED - Supabase Configuration
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_KEY=your-service-role-key
 
 # REQUIRED - Database Configuration for Knex.js Migrations
@@ -230,12 +261,6 @@ RATE_LIMIT_MAX=100
 # OPTIONAL - Organization Settings
 ORGANIZATION_NAME=Vezlo
 ASSISTANT_NAME=Vezlo Assistant
-
-# OPTIONAL - Feature Flags
-ENABLE_CACHE=true
-ENABLE_VOICE=true
-ENABLE_GITHUB_SYNC=true
-ENABLE_HUMAN_HANDOFF=true
 
 # OPTIONAL - Knowledge Base
 CHUNK_SIZE=1000
@@ -393,19 +418,32 @@ curl -X POST /api/messages/msg456/generate \
 
 ## 🗄️ Database Setup
 
-Run the SQL schema in your Supabase SQL Editor:
+### Option A: Run Migrations (Recommended)
+
+Use the built‑in migration endpoints to create/upgrade tables:
 
 ```bash
-# Copy the database schema file
-cp database-schema.sql /path/to/your/supabase/sql-editor
+# Run pending migrations
+curl "http://localhost:3000/api/migrate?key=your-migration-secret-key"
+
+# Check migration status
+curl "http://localhost:3000/api/migrate/status?key=your-migration-secret-key"
 ```
 
-The `database-schema.sql` file contains all necessary tables and functions:
-- **conversations** - Chat conversation management
-- **messages** - Individual messages within conversations  
-- **message_feedback** - User feedback on messages
-- **knowledge_items** - Knowledge base items with vector embeddings
-- **match_knowledge_items()** - Vector similarity search function
+These endpoints execute Knex migrations and keep schema versioned.
+
+### Option B: Manual SQL (Fallback)
+
+If you prefer manual setup, run the SQL schema in Supabase SQL Editor:
+
+```bash
+# View the schema SQL locally
+cat database-schema.sql
+
+# Copy into Supabase Dashboard → SQL Editor and execute
+```
+
+The `database-schema.sql` contains all required tables and functions.
 
 ## 🐳 Docker Commands
 
@@ -478,8 +516,11 @@ npm install
 # Build TypeScript
 npm run build
 
-# Start development server
-npm run dev
+# Start server (Node)
+npm start
+
+# Or start via CLI wrapper
+npx vezlo-server
 
 # Run tests
 npm test
@@ -603,4 +644,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 1.3.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 1.4.0 | **Node.js**: 20+ | **TypeScript**: 5+

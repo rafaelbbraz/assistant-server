@@ -4,57 +4,61 @@ Deploy your Vezlo Assistant Server to Vercel in minutes with this comprehensive 
 
 ## 🚀 Quick Deploy
 
-### Option 1: One-Click Deploy + Web Setup (Easiest!)
+Below are five supported deployment options. Pick what fits your workflow:
+
+1) Marketplace (existing project): Installs the Marketplace app on an existing Vercel project; envs auto; run migration URL post‑deploy.
+
+2) One‑Click + Marketplace (create new project): Clones the repo, creates a new project, attaches the Marketplace integration; envs auto; run migration URL.
+
+3) One‑Click + Manual Envs: Clones the repo and creates a new project; you fill env vars manually in Vercel.
+
+4) Deploy from GitHub (Vercel dashboard): Import repo via Vercel UI; set env vars; deploy.
+
+5) Manual via Vercel CLI: Full control; you build and configure everything manually.
+
+### Option 1: Vercel Marketplace Integration (Recommended)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&project-name=vezlo-assistant&repository-name=vezlo-assistant-server)
 
-**New!** After deployment:
-1. Visit your deployed URL (e.g., `https://your-app.vercel.app`)
-2. You'll be automatically redirected to the **Web Setup Wizard**
-3. Follow the interactive wizard to:
-   - Configure your Supabase database
-   - Add your OpenAI API key
-   - Automatically create database tables
-   - Validate the entire setup
+The Marketplace app collects your credentials via a configuration page and sets environment variables automatically. After the first deployment, run the migration URL once to create tables.
 
-**No CLI required! Everything is done through a beautiful web interface.**
+**After deployment:**
+1. Run migrations: `https://your-app.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
+2. Verify: `https://your-app.vercel.app/health`
+3. Docs: `https://your-app.vercel.app/docs`
 
-### Option 2: One-Click Deploy (Advanced - Manual Env Setup)
+### Option 2: One-Click Deploy + Marketplace (Creates project + attaches integration)
 
-Use this if you prefer to configure environment variables manually in Vercel dashboard:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&env=SUPABASE_URL,SUPABASE_SERVICE_KEY,SUPABASE_DB_HOST,SUPABASE_DB_PASSWORD,OPENAI_API_KEY&envDescription=Required%20environment%20variables%20for%20Vezlo%20Assistant%20Server&envLink=https://github.com/vezlo/assistant-server/blob/main/.env.vercel.example&project-name=vezlo-assistant&repository-name=vezlo-assistant-server)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&integration-ids=oac_f2GcBt8U4FhiVJ4qWv5PYMEZ&project-name=vezlo-assistant&repository-name=vezlo-assistant-server)
 
 This will:
 1. Fork the repository to your GitHub account
 2. Create a new Vercel project
-3. Prompt you for required environment variables
+3. Attach the Marketplace integration and set envs automatically
 4. Deploy automatically
 
-## 🌐 Web-Based Setup Wizard
+### Option 3: One-Click Deploy (Manual Env Setup)
 
-After deploying to Vercel, visit your app URL and you'll see the interactive setup wizard:
+Use this if you prefer to configure environment variables manually in Vercel dashboard:
 
-**Features:**
-- ✨ **Beautiful UI** - Step-by-step guided configuration
-- 🔒 **Secure** - Credentials never leave your browser until submitted
-- ✅ **Validation** - Tests database connections before proceeding
-- 🚀 **Auto-Migration** - Automatically creates all database tables
-- 📊 **Verification** - Confirms successful setup with detailed status
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&env=SUPABASE_URL,SUPABASE_SERVICE_KEY,SUPABASE_DB_HOST,SUPABASE_DB_PORT,SUPABASE_DB_NAME,SUPABASE_DB_USER,SUPABASE_DB_PASSWORD,OPENAI_API_KEY,AI_MODEL,AI_TEMPERATURE,AI_MAX_TOKENS,MIGRATION_SECRET_KEY&envDescription=Required%20environment%20variables%20for%20Vezlo%20Assistant%20Server)
 
-**Steps:**
-1. **Welcome** - Introduction to the setup process
-2. **Database** - Enter Supabase credentials
-3. **OpenAI** - Configure AI model and API key
-4. **Setup** - Automatic table creation and validation
-5. **Complete** - Success confirmation with next steps
+## 🌐 Marketplace Behavior
 
-**Access the wizard:**
-- First visit: Automatically redirected to `/setup`
-- Manual access: Visit `https://your-app.vercel.app/setup`
-- After setup: Redirected to `/docs` (API documentation)
+The Marketplace integration sets environment variables at deploy time. Manual web setup is not required. Use the migration URL to initialize the database.
 
-### Option 3: Manual Vercel CLI Deploy
+### Option 4: Deploy from GitHub (Vercel Dashboard)
+
+Import your GitHub repo directly in Vercel’s dashboard and configure environment variables manually.
+
+Steps:
+1. Push your code to GitHub
+2. Go to vercel.com → New Project
+3. Import your repository
+4. Add required environment variables (see below)
+5. Deploy
+
+### Option 5: Manual Vercel CLI Deploy
 
 ```bash
 # Install Vercel CLI
@@ -76,14 +80,7 @@ vercel
 # Follow prompts to configure your project
 ```
 
-### Option 3: Deploy from GitHub
-
-1. Push your code to GitHub
-2. Go to [vercel.com](https://vercel.com)
-3. Click "New Project"
-4. Import your GitHub repository
-5. Configure environment variables (see below)
-6. Click "Deploy"
+<!-- duplicate section removed -->
 
 ## ⚙️ Environment Variables
 
@@ -96,10 +93,16 @@ You'll need to configure these environment variables in Vercel:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-role-key
 SUPABASE_DB_HOST=db.your-project.supabase.co
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
 SUPABASE_DB_PASSWORD=your-database-password
 
 # OpenAI Configuration
 OPENAI_API_KEY=sk-your-openai-api-key
+AI_MODEL=gpt-4o
+AI_TEMPERATURE=0.7
+AI_MAX_TOKENS=1000
 ```
 
 ### How to Add Environment Variables in Vercel

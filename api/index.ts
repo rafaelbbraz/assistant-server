@@ -107,7 +107,6 @@ async function initializeServices() {
       model: process.env.AI_MODEL || 'gpt-4',
       temperature: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
       maxTokens: parseInt(process.env.AI_MAX_TOKENS || '1000'),
-      enableFeedbackDetection: process.env.ENABLE_FEEDBACK_DETECTION === 'true',
       knowledgeBaseService: knowledgeBase
     });
 
@@ -133,43 +132,14 @@ async function initializeServices() {
 
 // Routes
 
-// Serve static files from public directory
-app.use('/public', express.static(publicPath));
+// (No static public assets served)
 
-// Setup wizard route
-app.get('/setup', (req, res) => {
-  const setupHtmlPath = path.join(publicPath, 'setup.html');
-  res.sendFile(setupHtmlPath);
-});
 
-// Setup API endpoint
-app.post('/api/setup/configure', async (req, res) => {
-  // Import setup handler dynamically
-  const setupHandler = await import('./setup/configure');
-  return setupHandler.default(req as any, res as any);
-});
+// (Setup API removed)
 
-// Helper to check if environment is configured
-function isEnvironmentConfigured(): boolean {
-  return !!(process.env.SUPABASE_URL && process.env.OPENAI_API_KEY);
-}
-
-// Redirect root to setup if not configured, otherwise to docs
-app.get('/', (req, res) => {
-  const isConfigured = isEnvironmentConfigured();
-  console.log('Root route check:', {
-    configured: isConfigured,
-    has_supabase_url: !!process.env.SUPABASE_URL,
-    has_openai_key: !!process.env.OPENAI_API_KEY,
-    supabase_url: process.env.SUPABASE_URL?.substring(0, 20) + '...',
-    openai_key: process.env.OPENAI_API_KEY?.substring(0, 10) + '...'
-  });
-  
-  if (!isConfigured) {
-    res.redirect('/setup');
-  } else {
-    res.redirect('/docs');
-  }
+// Redirect root to docs
+app.get('/', (_req, res) => {
+  res.redirect('/docs');
 });
 
 // API Documentation - custom HTML with CDN assets for serverless
@@ -218,32 +188,20 @@ app.get('/docs', (req, res) => {
 });
 
 // Health check
-app.get('/health', async (req, res) => {
+app.get('/health', async (_req, res) => {
   try {
     const healthChecks: any = {
       server: 'healthy',
       timestamp: new Date().toISOString(),
-      platform: 'vercel',
-      configured: isEnvironmentConfigured(),
-      env_check: {
-        has_supabase_url: !!process.env.SUPABASE_URL,
-        has_openai_key: !!process.env.OPENAI_API_KEY,
-        supabase_url_length: process.env.SUPABASE_URL?.length || 0,
-        openai_key_length: process.env.OPENAI_API_KEY?.length || 0
-      }
+      platform: 'vercel'
     };
 
-    // Only check Supabase if configured
-    if (isEnvironmentConfigured()) {
-      try {
-        const supabase = getSupabaseClient();
-        const { error } = await supabase.from('vezlo_conversations').select('count').limit(1);
-        healthChecks.supabase = error ? 'error' : 'connected';
-      } catch (error) {
-        healthChecks.supabase = 'disconnected';
-      }
-    } else {
-      healthChecks.supabase = 'not_configured';
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.from('vezlo_conversations').select('count').limit(1);
+      healthChecks.supabase = error ? 'error' : 'connected';
+    } catch (error) {
+      healthChecks.supabase = 'disconnected';
     }
 
     res.json({
@@ -259,18 +217,7 @@ app.get('/health', async (req, res) => {
 });
 
 // Middleware to ensure services are initialized for API routes
-const requireServices = async (req: any, res: any, next: any) => {
-  if (!isEnvironmentConfigured()) {
-    return res.status(503).json({
-      success: false,
-      error: {
-        code: 'NOT_CONFIGURED',
-        message: 'Server not configured. Please visit /setup to configure.',
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-
+const requireServices = async (_req: any, res: any, next: any) => {
   try {
     await initializeServices();
     next();
@@ -280,7 +227,7 @@ const requireServices = async (req: any, res: any, next: any) => {
       success: false,
       error: {
         code: 'INITIALIZATION_FAILED',
-        message: 'Failed to initialize server services',
+        message: 'Failed to initialize server services. Verify environment variables are set in Vercel settings.',
         timestamp: new Date().toISOString()
       }
     });

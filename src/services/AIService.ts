@@ -4,7 +4,6 @@ import {
   ChatContext,
   AIResponse,
   DatabaseSearchResult,
-  FeedbackDetection,
   NavigationLink
 } from '../types';
 import { KnowledgeBaseService } from './KnowledgeBaseService';
@@ -141,15 +140,11 @@ ${this.knowledgeBase}
 
       const response = completion.choices[0]?.message?.content || 'I apologize, but I was unable to generate a response.';
 
-      const feedbackDetection = this.config.enableFeedbackDetection ? 
-        await this.detectFeedback(message) : null;
-
       const suggestedLinks = this.findRelevantLinks(message);
 
       return {
         content: response,
         toolResults: [],
-        feedbackDetection,
         suggestedLinks
       };
 
@@ -157,36 +152,6 @@ ${this.knowledgeBase}
       console.error('AI Service Error:', error);
       throw new Error('Failed to generate AI response');
     }
-  }
-
-  private async detectFeedback(message: string): Promise<FeedbackDetection | null> {
-    try {
-      const feedbackPrompt = `Analyze this user message and determine if it contains feedback. Classify it as:
-- bug_report: User reporting a problem or error
-- feature_request: User asking for new functionality
-- general_feedback: User providing opinions or suggestions
-- not_feedback: Regular question or conversation
-
-Message: "${message}"
-
-Respond with JSON: {"type": "...", "confidence": 0-1, "keyPoints": ["..."], "suggestedAction": "..."}`;
-
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: feedbackPrompt }],
-        temperature: 0.1,
-        max_tokens: 200,
-      });
-
-      const response = completion.choices[0]?.message?.content;
-      if (response) {
-        return JSON.parse(response);
-      }
-    } catch (error) {
-      console.error('Feedback detection error:', error);
-    }
-
-    return null;
   }
 
   private findRelevantLinks(message: string): NavigationLink[] {
