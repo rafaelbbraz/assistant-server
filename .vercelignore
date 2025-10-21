@@ -17,9 +17,7 @@ node_modules/
 
 # Logs
 logs/
-*.log
-
-# Tests
+*.log# Tests
 test/
 tests/
 *.test.js
@@ -56,3 +54,7 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 # Force rebuild at و 16:07:09 PKT ت 01 اکتوبر 2025
+
+# Exclude the frontend application (separate project)
+assistant-chat/
+
