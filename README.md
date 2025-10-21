@@ -254,6 +254,9 @@ LOG_LEVEL=info
 # OPTIONAL - CORS Configuration
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
+# OPTIONAL - Swagger Base URL
+BASE_URL=http://localhost:3000
+
 # OPTIONAL - Rate Limiting
 RATE_LIMIT_WINDOW=60000
 RATE_LIMIT_MAX=100
@@ -561,6 +564,7 @@ Ensure all required environment variables are set:
 - `MIGRATION_SECRET_KEY` (required for migration endpoints)
 - `NODE_ENV=production`
 - `CORS_ORIGINS` (set to your domain)
+- `BASE_URL` (optional, for custom Swagger server URL)
 
 ### Docker Production
 ```bash

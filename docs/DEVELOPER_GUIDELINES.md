@@ -238,6 +238,9 @@ PORT=3000
 NODE_ENV=development
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
+# Swagger Base URL
+BASE_URL=http://localhost:3000
+
 # Rate Limiting
 RATE_LIMIT_WINDOW=900000
 RATE_LIMIT_MAX=100

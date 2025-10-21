@@ -127,6 +127,9 @@ LOG_LEVEL=info
 # CORS Configuration
 CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 
+# Swagger Base URL (optional)
+BASE_URL=https://yourdomain.com
+
 # AI Configuration
 AI_MODEL=gpt-4o
 AI_TEMPERATURE=0.7
