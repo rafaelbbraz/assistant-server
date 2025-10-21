@@ -1,7 +1,25 @@
+import { config as dotenvConfig } from 'dotenv';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { config } from './global';
 import { AllSchemas } from '../schemas';
+
+// Load environment variables
+dotenvConfig();
+
+const getServerUrl = () => {
+  // Always use BASE_URL if set, otherwise fallback to appropriate default
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  
+  // Fallback to Vercel URL or localhost
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  
+  return 'http://localhost:3000';
+};
 
 const options = {
   definition: {
@@ -13,8 +31,8 @@ const options = {
     },
     servers: [
       {
-        url: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
-        description: process.env.VERCEL_URL ? 'Production server' : 'Development server'
+        url: getServerUrl(),
+        description: process.env.VERCEL_URL ? 'Current deployment' : 'Development server'
       }
     ],
     components: {

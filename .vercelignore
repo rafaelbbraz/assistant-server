@@ -17,7 +17,9 @@ node_modules/
 
 # Logs
 logs/
-*.log# Tests
+*.log
+
+# Tests
 test/
 tests/
 *.test.js

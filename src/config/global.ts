@@ -3,6 +3,11 @@
  * Centralized configuration for the AI Assistant API
  */
 
+import { config as dotenvConfig } from 'dotenv';
+
+// Load environment variables first
+dotenvConfig();
+
 export interface GlobalConfig {
   app: {
     name: string;
