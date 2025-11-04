@@ -1,5 +1,6 @@
 import type { Knex } from 'knex';
 import dotenv from 'dotenv';
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -53,13 +54,14 @@ const config: { [key: string]: Knex.Config } = {
       max: 20
     },
     migrations: {
-      directory: './src/migrations',
+      // Use absolute path based on __dirname (knexfile.js location in dist/)
+      directory: path.join(__dirname, 'src/migrations'),
       tableName: 'knex_migrations',
-      extension: 'ts'
+      extension: 'js'
     },
     seeds: {
-      directory: './src/seeds',
-      extension: 'ts'
+      directory: path.join(__dirname, 'src/seeds'),
+      extension: 'js'
     }
   },
 
@@ -79,13 +81,20 @@ const config: { [key: string]: Knex.Config } = {
       max: 10
     },
     migrations: {
-      directory: './src/migrations',
+      // In production (Vercel), knexfile.js is in dist/, so use absolute path
+      // In development, use relative path
+      directory: process.env.NODE_ENV === 'production' 
+        ? path.join(__dirname, 'src/migrations')
+        : path.join(process.cwd(), 'src/migrations'),
       tableName: 'knex_migrations',
-      extension: 'ts'
+      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts',
+      loadExtensions: process.env.NODE_ENV === 'production' ? ['.js'] : ['.ts']
     },
     seeds: {
-      directory: './src/seeds',
-      extension: 'ts'
+      directory: process.env.NODE_ENV === 'production' 
+        ? path.join(__dirname, 'src/seeds')
+        : path.join(process.cwd(), 'src/seeds'),
+      extension: process.env.NODE_ENV === 'production' ? 'js' : 'ts'
     }
   }
 };

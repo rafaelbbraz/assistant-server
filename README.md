@@ -2,6 +2,24 @@
 
 🚀 **Production-ready Node.js/TypeScript API server** for the Vezlo AI Assistant platform - Complete backend APIs with Docker deployment and database migrations.
 
+## 🚨 Breaking Change Notice (v2.0.0)
+
+**This version introduces multi-tenancy support with breaking changes. Existing data will not be migrated automatically.**
+
+### Migration Required
+- **Database Schema**: New authentication and multi-tenancy tables
+- **Auth Model**: Endpoints now use a mix of auth modes — some support JWT or API key, and select public endpoints remain for the chat widget
+- **Data Structure**: Foreign key relationships updated for multi-tenancy
+
+### Quick Migration Steps
+1. **Upgrade**: `npm install @vezlo/assistant-server@latest`
+2. **Run migrations**: `npm run migrate:latest`
+3. **Setup**: `npm run seed-default`
+
+See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
+
+---
+
 ## 🏗️ Architecture
 
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management
@@ -74,6 +92,8 @@ The wizard will guide you through:
 3. **Validation (non‑blocking)** - Tests Supabase API and DB connectivity
 4. **Migrations** - Runs Knex migrations if DB validation passes; otherwise shows how to run later
 5. **Environment** - Generates `.env` (does not overwrite if it already exists)
+6. **Default Data Seeding** - Creates default admin user and company
+7. **API Key Generation** - Generates API key for the default company
 
 After setup completes, start the server:
 
@@ -131,13 +151,22 @@ npm run migrate:latest
 curl "http://localhost:3000/api/migrate?key=$MIGRATION_SECRET_KEY"
 ```
 
+#### 4. Create Default Admin & Generate API Key
+```bash
+# Create default admin user and company (if not exists)
+npm run seed-default
+
+# Generate API key for library integration
+npm run generate-key
+```
+
 Optional fallback (not recommended if using migrations):
 ```bash
 # Run raw SQL in Supabase Dashboard → SQL Editor
 cat database-schema.sql
 ```
 
-#### 4. Validate Setup
+#### 5. Validate Setup
 
 ```bash
 # Verify database connection and tables
@@ -147,7 +176,7 @@ vezlo-validate
 npm run validate
 ```
 
-#### 5. Start Server
+#### 6. Start Server
 
 ```bash
 # If installed globally
@@ -246,6 +275,11 @@ AI_MAX_TOKENS=1000
 # REQUIRED - Database Migration Security
 MIGRATION_SECRET_KEY=your-secure-migration-key-here
 
+# REQUIRED - Authentication
+JWT_SECRET=your-super-secret-jwt-key-here-change-this-in-production
+DEFAULT_ADMIN_EMAIL=admin@vezlo.org
+DEFAULT_ADMIN_PASSWORD=admin123
+
 # OPTIONAL - Server Configuration
 PORT=3000
 NODE_ENV=production
@@ -275,20 +309,36 @@ CHUNK_OVERLAP=200
 The package provides these command-line tools:
 
 ### vezlo-setup
-**Interactive setup wizard** that guides you through the complete configuration process. This CLI tool provides the same functionality as the web-based setup wizard but runs in your terminal.
+Interactive setup wizard that guides you through configuration.
 
 ```bash
 vezlo-setup
 ```
 
+### vezlo-seed-default
+Creates default admin user and company.
+
+```bash
+vezlo-seed-default
+```
+
+### vezlo-generate-key
+Generates API key for the default admin's company. The API key is used by src-to-kb library.
+
+```bash
+vezlo-generate-key
+```
+
 ### vezlo-validate
 Validates database connection and verifies all tables exist.
+
 ```bash
 vezlo-validate
 ```
 
 ### vezlo-server
 Starts the API server.
+
 ```bash
 vezlo-server
 ```
@@ -562,6 +612,8 @@ Ensure all required environment variables are set:
 - `SUPABASE_DB_HOST`, `SUPABASE_DB_PASSWORD` (required for migrations)
 - `OPENAI_API_KEY` (required)
 - `MIGRATION_SECRET_KEY` (required for migration endpoints)
+- `JWT_SECRET` (required for authentication)
+- `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` (required for initial setup)
 - `NODE_ENV=production`
 - `CORS_ORIGINS` (set to your domain)
 - `BASE_URL` (optional, for custom Swagger server URL)
@@ -648,4 +700,4 @@ This project is dual-licensed:
 
 ---
 
-**Status**: ✅ Production Ready | **Version**: 1.4.0 | **Node.js**: 20+ | **TypeScript**: 5+
+**Status**: ✅ Production Ready | **Version**: 2.0.0 | **Node.js**: 20+ | **TypeScript**: 5+

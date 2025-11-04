@@ -21,16 +21,20 @@ import { initializeSupabase, getSupabaseClient } from '../dist/src/config/databa
 import { specs, swaggerUi, swaggerUiOptions } from '../dist/src/config/swagger';
 import { config as globalConfig } from '../dist/src/config/global';
 import { errorHandler, notFoundHandler } from '../dist/src/middleware/errorHandler';
+import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from '../dist/src/middleware/auth';
 
 // Import services from compiled dist
 import { AIService } from '../dist/src/services/AIService';
 import { ChatManager } from '../dist/src/services/ChatManager';
 import { KnowledgeBaseService } from '../dist/src/services/KnowledgeBaseService';
+import { ApiKeyService } from '../dist/src/services/ApiKeyService';
 import { UnifiedStorage } from '../dist/src/storage/UnifiedStorage';
 
 // Import controllers from compiled dist
 import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
+import { AuthController } from '../dist/src/controllers/AuthController';
+import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
 
 // Load environment variables
 config();
@@ -79,6 +83,9 @@ let knowledgeBase: KnowledgeBaseService;
 let storage: UnifiedStorage;
 let chatController: ChatController;
 let knowledgeController: KnowledgeController;
+let authController: AuthController;
+let apiKeyController: ApiKeyController;
+let supabase: any;
 
 async function initializeServices() {
   if (servicesInitialized) return;
@@ -87,7 +94,7 @@ async function initializeServices() {
 
   try {
     // Initialize Supabase
-    const supabase = initializeSupabase();
+    supabase = initializeSupabase();
     logger.info('Supabase client initialized');
 
     // Initialize storage
@@ -119,8 +126,13 @@ async function initializeServices() {
     });
 
     // Initialize controllers
-    chatController = new ChatController(chatManager, storage);
-    knowledgeController = new KnowledgeController(knowledgeBase);
+    chatController = new ChatController(chatManager, storage, supabase);
+    knowledgeController = new KnowledgeController(knowledgeBase, aiService);
+    authController = new AuthController(supabase);
+    
+    // Initialize API key service and controller
+    const apiKeyService = new ApiKeyService(supabase);
+    apiKeyController = new ApiKeyController(apiKeyService);
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -234,26 +246,180 @@ const requireServices = async (_req: any, res: any, next: any) => {
   }
 };
 
-// Conversation APIs
+// Helper function for authenticated routes (JWT only)
+const requireAuth = (req: any, res: any, next: any) => {
+  const authMiddleware = authenticateUser(supabase);
+  authMiddleware(req, res, next);
+};
+
+// Helper function for routes that accept both JWT and API key
+const requireUserOrApiKey = (req: any, res: any, next: any) => {
+  const authMiddleware = authenticateUserOrApiKey(supabase);
+  authMiddleware(req, res, next);
+};
+
+// Authentication APIs
+app.post('/api/auth/login', requireServices, (req, res) => authController.login(req, res));
+app.post('/api/auth/logout', requireServices, requireAuth, (req, res) => authController.logout(req, res));
+app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authController.getMe(req, res));
+
+// API Key Management APIs
+app.post('/api/api-keys', requireServices, requireAuth, (req, res) => apiKeyController.generateApiKey(req, res));
+app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiKeyController.getApiKeyStatus(req, res));
+
+// Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
 app.get('/api/conversations/:uuid', requireServices, (req, res) => chatController.getConversation(req, res));
-app.delete('/api/conversations/:uuid', requireServices, (req, res) => chatController.deleteConversation(req, res));
-app.get('/api/users/:uuid/conversations', requireServices, (req, res) => chatController.getUserConversations(req, res));
+app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
-// Message APIs
+// Message APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations/:uuid/messages', requireServices, (req, res) => chatController.createUserMessage(req, res));
 app.post('/api/messages/:uuid/generate', requireServices, (req, res) => chatController.generateResponse(req, res));
 
-// Knowledge Base APIs
-app.post('/api/knowledge/items', requireServices, (req, res) => knowledgeController.createItem(req, res));
-app.get('/api/knowledge/items', requireServices, (req, res) => knowledgeController.listItems(req, res));
-app.get('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.getItem(req, res));
-app.put('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.updateItem(req, res));
-app.delete('/api/knowledge/items/:uuid', requireServices, (req, res) => knowledgeController.deleteItem(req, res));
-app.post('/api/knowledge/search', requireServices, (req, res) => knowledgeController.search(req, res));
+// Conversation list (moved to match server.ts order)
+app.get('/api/conversations', requireServices, requireAuth, (req, res) => chatController.getUserConversations(req, res));
 
 // Feedback API
-app.post('/api/feedback', requireServices, (req, res) => chatController.submitFeedback(req, res));
+app.post('/api/feedback', requireServices, requireAuth, (req, res) => chatController.submitFeedback(req, res));
+
+// Knowledge Base APIs
+app.post('/api/knowledge/items', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.createItem(req, res));
+app.get('/api/knowledge/items', requireServices, requireAuth, (req, res) => knowledgeController.listItems(req, res));
+app.post('/api/knowledge/search', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.search(req, res));
+app.post('/api/search', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.ragSearch(req, res));
+app.get('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.getItem(req, res));
+app.put('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.updateItem(req, res));
+app.delete('/api/knowledge/items/:uuid', requireServices, requireAuth, (req, res) => knowledgeController.deleteItem(req, res));
+
+// Migration APIs (for development/setup)
+app.get('/api/migrate', requireServices, async (req, res) => {
+  try {
+    const apiKey = (req.query.key || req.headers['x-migration-key']) as string;
+
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const result = await MigrationService.runMigrations(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 :
+      result.error === 'MISSING_ENV_VARS' || result.error === 'DATABASE_CONNECTION_FAILED' ? 400 : 500;
+
+    res.status(statusCode).json(result);
+  } catch (error) {
+    logger.error('Migration error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'MIGRATION_FAILED',
+        message: error instanceof Error ? error.message : 'Migration failed',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+});
+
+app.get('/api/migrate/status', requireServices, async (req, res) => {
+  try {
+    const apiKey = (req.query.key || req.headers['x-migration-key']) as string;
+
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const result = await MigrationService.getStatus(apiKey);
+
+    const statusCode = result.success ? 200 :
+      result.error === 'UNAUTHORIZED' ? 401 : 500;
+
+    res.status(statusCode).json(result);
+  } catch (error) {
+    logger.error('Migration status error:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'MIGRATION_STATUS_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to get migration status',
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+});
+
+// Seed Default Data API
+app.post('/api/seed-default', requireServices, async (req, res) => {
+  try {
+    const apiKey = (req.query.key || req.headers['x-migration-key']) as string;
+
+    // Validate API key
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const keyValid = MigrationService.validateApiKey(apiKey);
+    
+    if (!keyValid) {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid or missing migration API key',
+        error: 'UNAUTHORIZED'
+      });
+      return;
+    }
+
+    // Execute seed using SetupService
+    const { SetupService } = await import('../dist/src/services/SetupService');
+    const setupService = new SetupService(supabase);
+    const response = await setupService.executeSeedDefault();
+
+    res.status(200).json(response);
+
+  } catch (error) {
+    logger.error('Seed default failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to seed default data',
+      error: error instanceof Error ? error.message : 'SEED_DEFAULT_FAILED',
+      details: {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    });
+  }
+});
+
+// Generate API Key
+app.post('/api/generate-key', requireServices, async (req, res) => {
+  try {
+    const apiKey = (req.query.key || req.headers['x-migration-key']) as string;
+
+    // Validate API key
+    const { MigrationService } = await import('../dist/src/services/MigrationService');
+    const keyValid = MigrationService.validateApiKey(apiKey);
+    
+    if (!keyValid) {
+      res.status(401).json({
+        success: false,
+        message: 'Invalid or missing migration API key',
+        error: 'UNAUTHORIZED'
+      });
+      return;
+    }
+
+    // Execute generate key using SetupService
+    const { SetupService } = await import('../dist/src/services/SetupService');
+    const setupService = new SetupService(supabase);
+    const response = await setupService.executeGenerateKey();
+
+    res.status(200).json({
+      success: true,
+      message: 'API key generated successfully',
+      api_key_details: response
+    });
+
+  } catch (error) {
+    logger.error('Generate API key failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate API key',
+      error: error instanceof Error ? error.message : 'GENERATE_KEY_FAILED',
+      details: {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    });
+  }
+});
 
 // Error handlers
 app.use(notFoundHandler);

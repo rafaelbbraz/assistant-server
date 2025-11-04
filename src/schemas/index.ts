@@ -7,21 +7,27 @@ import { ConversationSchemas } from './ConversationSchemas';
 import { MessageSchemas } from './MessageSchemas';
 import { KnowledgeSchemas } from './KnowledgeSchemas';
 import { FeedbackSchemas } from './FeedbackSchemas';
+import { AuthSchemas } from './AuthSchemas';
+import { CommonSchemas } from './CommonSchemas';
 
 // Combine all schemas for Swagger
 export const AllSchemas = {
+  ...CommonSchemas,
   ...ConversationSchemas,
   ...MessageSchemas,
   ...KnowledgeSchemas,
-  ...FeedbackSchemas
+  ...FeedbackSchemas,
+  ...AuthSchemas
 };
 
 // Individual exports for specific use
 export {
+  CommonSchemas,
   ConversationSchemas,
   MessageSchemas,
   KnowledgeSchemas,
-  FeedbackSchemas
+  FeedbackSchemas,
+  AuthSchemas
 };
 
 // Schema validation helpers (can be extended)

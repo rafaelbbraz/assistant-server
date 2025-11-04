@@ -35,88 +35,40 @@ const options = {
         description: process.env.VERCEL_URL ? 'Current deployment' : 'Development server'
       }
     ],
+    security: [
+      {
+        bearerAuth: []
+      }
+    ],
     components: {
       schemas: {
         // ============================================================================
-        // IMPORTED CONTROLLER-SPECIFIC SCHEMAS
+        // ALL SCHEMAS (Common and Controller-specific)
         // ============================================================================
-        ...AllSchemas,
-
-        // ============================================================================
-        // COMMON/GLOBAL SCHEMAS (Keep these here)
-        // ============================================================================
-        Error: {
-          type: 'object',
-          properties: {
-            error: {
-              type: 'object',
-              properties: {
-                code: { type: 'string', description: 'Error code' },
-                message: { type: 'string', description: 'Error message' },
-                details: { type: 'object', description: 'Additional error details' },
-                timestamp: { type: 'string', format: 'date-time', description: 'Error timestamp' },
-                path: { type: 'string', description: 'Request path' },
-                method: { type: 'string', description: 'HTTP method' }
-              }
-            },
-            success: { type: 'boolean', example: false }
-          }
-        },
-
-        SuccessResponse: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean', example: true },
-            message: { type: 'string', description: 'Success message' },
-            data: { type: 'object', description: 'Response data' }
-          }
-        },
-
-        HealthCheck: {
-          type: 'object',
-          properties: {
-            status: { type: 'string', example: 'healthy' },
-            checks: {
-              type: 'object',
-              properties: {
-                server: { type: 'string', example: 'healthy' },
-                supabase: { type: 'string', example: 'connected' },
-                openai: { type: 'string', example: 'connected' },
-                timestamp: { type: 'string', format: 'date-time' }
-              }
-            },
-            uptime: { type: 'number', description: 'Server uptime in seconds' },
-            version: { type: 'string', description: 'API version' }
-          }
-        },
-
-        PaginationMeta: {
-          type: 'object',
-          properties: {
-            total: { type: 'integer', description: 'Total number of items' },
-            limit: { type: 'integer', description: 'Items per page' },
-            offset: { type: 'integer', description: 'Items skipped' },
-            page: { type: 'integer', description: 'Current page number' },
-            pages: { type: 'integer', description: 'Total number of pages' }
-          }
-        }
+        ...AllSchemas
       },
 
       // ============================================================================
       // SECURITY SCHEMES
       // ============================================================================
       securitySchemes: {
-        BearerAuth: {
+        bearerAuth: {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'JWT token for authentication'
+          description: 'JWT token for user authentication'
         },
-        ApiKeyAuth: {
+        apiKeyAuth: {
           type: 'apiKey',
           in: 'header',
-          name: 'X-API-Key',
-          description: 'API key for authentication'
+          name: 'x-api-key',
+          description: 'API key for service authentication'
+        },
+        migrationKey: {
+          type: 'apiKey',
+          in: 'query',
+          name: 'key',
+          description: 'Migration secret key from MIGRATION_SECRET_KEY environment variable'
         }
       },
 
@@ -145,15 +97,6 @@ const options = {
             default: 0
           }
         },
-        CompanyUuidParam: {
-          name: 'company_uuid',
-          in: 'query',
-          description: 'Filter by company UUID',
-          schema: {
-            type: 'integer',
-            default: 67890
-          }
-        }
       },
 
       // ============================================================================

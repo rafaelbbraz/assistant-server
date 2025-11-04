@@ -97,6 +97,31 @@ async function main() {
 
   const migrationStatus = await setupMigrations(config, validationStatus) || { migrations: validationStatus.database === 'success' ? 'success' : 'skipped' };
 
+  // Step 6: Default Data Setup (only if migrations succeeded)
+  if (migrationStatus.migrations === 'success') {
+    log('\n═══════════════════════════════════════════════════════════', 'cyan');
+    log('  STEP 6: Default Data Setup', 'bright');
+    log('═══════════════════════════════════════════════════════════\n', 'cyan');
+
+    const defaultDataStatus = await setupDefaultData(config);
+    migrationStatus.defaultData = defaultDataStatus;
+    
+    // Step 7: API Key Generation (only if default data setup succeeded)
+    if (defaultDataStatus === 'success') {
+      log('\n═══════════════════════════════════════════════════════════', 'cyan');
+      log('  STEP 7: API Key Generation', 'bright');
+      log('═══════════════════════════════════════════════════════════\n', 'cyan');
+      
+      const apiKeyStatus = await setupApiKey(config);
+      migrationStatus.apiKey = apiKeyStatus;
+    } else {
+      migrationStatus.apiKey = 'skipped';
+    }
+  } else {
+    migrationStatus.defaultData = 'skipped';
+    migrationStatus.apiKey = 'skipped';
+  }
+
   // Final Instructions / Summary
   log('\n═══════════════════════════════════════════════════════════', 'green');
   log('  🎉 Setup Complete!', 'bright');
@@ -108,12 +133,29 @@ async function main() {
   log(`  Supabase API: ${supaStatus === 'OK' ? colors.green + 'OK' : supaStatus === 'FAILED' ? colors.red + 'FAILED' : colors.yellow + 'UNKNOWN'}${colors.reset}`);
   log(`  Database: ${validationStatus.database === 'success' ? colors.green + 'OK' : colors.red + (validationStatus.database === 'skipped' ? 'SKIPPED' : 'FAILED')}${colors.reset}`);
   log(`  Migrations: ${migrationStatus.migrations === 'success' ? colors.green + 'OK' : migrationStatus.migrations === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
+  log(`  Default Data: ${migrationStatus.defaultData === 'success' ? colors.green + 'OK' : migrationStatus.defaultData === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
+  log(`  API Key: ${migrationStatus.apiKey === 'success' ? colors.green + 'OK' : migrationStatus.apiKey === 'skipped' ? colors.yellow + 'SKIPPED' : colors.red + 'FAILED'}${colors.reset}`);
 
   log('\nNext steps:');
   log('  1. Review your .env file');
   if (migrationStatus.migrations !== 'success') {
+    log('\n⚠️  IMPORTANT: Migrations were not run. You must run migrations first before seeding default data.', 'yellow');
     log('  2. Run database migrations: ' + colors.bright + 'npm run migrate:latest' + colors.reset);
-    log('     Or via API (after starting server): ' + colors.bright + 'GET /api/migrate?key=$MIGRATION_SECRET_KEY' + colors.reset);
+    log('  3. Then run seed: ' + colors.bright + 'npm run seed-default' + colors.reset + ' (only after migrations complete)', 'yellow');
+    log('  4. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (if not already done)');
+    log('  5. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
+    log('  6. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
+    log('  7. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
+    log('  8. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
+  } else if (migrationStatus.defaultData !== 'success') {
+    log('  2. Setup default data: ' + colors.bright + 'npm run seed-default' + colors.reset);
+    log('  3. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (after default data is created)');
+    log('  4. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
+    log('  5. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
+    log('  6. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
+    log('  7. Test API: ' + colors.bright + 'curl http://localhost:3000/health' + colors.reset + '\n');
+  } else if (migrationStatus.apiKey !== 'success') {
+    log('  2. Generate API key: ' + colors.bright + 'npm run generate-key' + colors.reset + ' (for library integration)');
     log('  3. Start the server: ' + colors.bright + 'vezlo-server' + colors.reset);
     log('  4. Visit: ' + colors.bright + 'http://localhost:3000/health' + colors.reset);
     log('  5. API docs: ' + colors.bright + 'http://localhost:3000/docs' + colors.reset);
@@ -165,14 +207,22 @@ async function setupSupabase() {
     const client = createClient(supabaseUrl.trim(), supabaseServiceKey.trim());
     const { error } = await client.from('vezlo_conversations').select('count').limit(0);
 
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // Check for table not found errors (normal before migrations run)
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') ||
+          error.message.includes('Could not find the table')) {
+        log('✅ Supabase connection successful!', 'green');
+        log('⚠️  Note: Table not found - this is normal before running migrations\n', 'yellow');
+      } else {
+        throw error;
+      }
+    } else {
+      log('✅ Supabase connection successful!\n', 'green');
     }
-
-    log('✅ Supabase connection successful!\n', 'green');
   } catch (err) {
     log(`❌ Supabase connection failed: ${err.message}`, 'red');
-    log('⚠️  Continuing setup. You can fix credentials and rerun validations later.', 'yellow');
+    log('⚠️  This might be because migrations haven\'t run yet, or check your credentials.', 'yellow');
   }
 
   // Validate database connection (same as validate script)
@@ -314,11 +364,19 @@ async function validateEnvironment(config) {
     const client = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY);
     const { error } = await client.from('vezlo_conversations').select('count').limit(0);
     
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    if (error) {
+      // Check for table not found errors (normal before migrations run)
+      if (error.code === 'PGRST116' || 
+          error.message.includes('does not exist') ||
+          error.message.includes('Could not find the table')) {
+        log('✅ Supabase API connection validated', 'green');
+        log('⚠️  Note: Table not found - this is normal before running migrations', 'yellow');
+      } else {
+        throw error;
+      }
+    } else {
+      log('✅ Supabase API connection validated', 'green');
     }
-    
-    log('✅ Supabase API connection validated', 'green');
   } catch (err) {
     log(`❌ Supabase API validation failed: ${err.message}`, 'red');
     // non-blocking; proceed to DB check anyway
@@ -414,9 +472,10 @@ async function setupMigrations(config, validationStatus) {
         log('✅ Migrations completed successfully!', 'green');
         return { migrations: 'success' };
       } else {
-        log('\n⚠️  Migrations skipped. You can run them later using:', 'yellow');
-        log('   npm run migrate:latest', 'cyan');
-        log('   Or via API: GET /api/migrate?key=your-migration-secret\n', 'cyan');
+        log('\n⚠️  Migrations skipped by user.', 'yellow');
+        log('   You can run them later using: ' + colors.cyan + 'npm run migrate:latest' + colors.reset, 'yellow');
+        log('   Or via API: ' + colors.cyan + 'GET /api/migrate?key=your-migration-secret' + colors.reset, 'yellow');
+        log('\n   ⚠️  Note: Default data seeding will be skipped until migrations are run.\n', 'yellow');
         return { migrations: 'skipped' };
       }
     } else {
@@ -436,11 +495,20 @@ async function setupMigrations(config, validationStatus) {
         execSync('npm run migrate:latest', { stdio: 'inherit' });
         
         log('✅ Migration check completed!', 'green');
+        await client.end();
         return { migrations: 'success' };
+      } else {
+        log('⚠️  Migration check skipped by user.', 'yellow');
+        log('   You can run them later using: ' + colors.cyan + 'npm run migrate:latest' + colors.reset, 'yellow');
+        log('   Or via API: ' + colors.cyan + 'GET /api/migrate?key=your-migration-secret' + colors.reset, 'yellow');
+        log('\n   ⚠️  Note: Default data seeding will be skipped until migrations are run.\n', 'yellow');
+        await client.end();
+        return { migrations: 'skipped' };
       }
     }
 
     await client.end();
+    return { migrations: 'skipped' };
   } catch (err) {
     log(`❌ Migration setup failed: ${err.message}`, 'red');
     log('\nYou can run migrations manually later:', 'yellow');
@@ -463,3 +531,70 @@ main().catch(error => {
   rl.close();
   process.exit(1);
 });
+async function setupDefaultData(config) {
+  log('🔄 Setting up default company and admin user...', 'yellow');
+
+  try {
+    // Import the setup service dynamically
+    const { runDefaultSetup } = await import('./seed-default.js');
+    
+    // Set environment variables for the setup
+    process.env.SUPABASE_URL = config.SUPABASE_URL;
+    process.env.SUPABASE_SERVICE_KEY = config.SUPABASE_SERVICE_KEY;
+    process.env.DEFAULT_ADMIN_EMAIL = config.DEFAULT_ADMIN_EMAIL || 'admin@vezlo.org';
+    process.env.DEFAULT_ADMIN_PASSWORD = config.DEFAULT_ADMIN_PASSWORD || 'admin123';
+    process.env.ORGANIZATION_NAME = config.ORGANIZATION_NAME || 'Vezlo';
+    process.env.JWT_SECRET = config.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
+
+    // Run the default setup
+    await runDefaultSetup();
+    
+    log('✅ Default data setup completed successfully!', 'green');
+    return 'success';
+  } catch (err) {
+    log(`❌ Default data setup failed: ${err.message}`, 'red');
+    log('\nYou can run default data setup manually later:', 'yellow');
+    log('   npm run seed-default', 'cyan');
+    return 'failed';
+  }
+}
+
+async function setupApiKey(config) {
+  log('🔄 Generating API key for library integration...', 'yellow');
+
+  try {
+    // Import the API key generator dynamically
+    const { generateApiKey } = await import('./generate-key.js');
+    
+    // Set environment variables for the setup (already set in setupDefaultData)
+    
+    // Run the API key generator in quiet mode
+    const result = await generateApiKey({ quiet: true });
+    
+    if (result.success) {
+      // Show API key details
+      log('✅ API key generated successfully!', 'green');
+      log('\n📋 API Key Details:', 'bright');
+      log(`   Company: ${result.company}`, 'reset');
+      log(`   User: ${result.user.name}`, 'reset');
+      log(`   API Key: ${result.apiKey}`, 'bright');
+      log('\n⚠️  IMPORTANT: Save this key securely. It will not be shown again.', 'yellow');
+      
+      // Show usage example
+      log('\n🔧 Usage Example:', 'bright');
+      log(`   curl -X POST http://localhost:3000/api/knowledge/items \\
+     -H "X-API-Key: ${result.apiKey}" \\
+     -H "Content-Type: application/json" \\
+     -d '{"title": "Example", "type": "document", "content": "Example content"}'`, 'cyan');
+      
+      return 'success';
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (err) {
+    log(`❌ API key generation failed: ${err.message}`, 'red');
+    log('\nYou can generate an API key manually later:', 'yellow');
+    log('   npm run generate-key', 'cyan');
+    return 'failed';
+  }
+}

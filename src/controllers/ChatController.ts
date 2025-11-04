@@ -1,25 +1,105 @@
 import { Request, Response } from 'express';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { ChatManager } from '../services/ChatManager';
 import { UnifiedStorage } from '../storage/UnifiedStorage';
+import { AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 
 export class ChatController {
   private chatManager: ChatManager;
   private storage: UnifiedStorage;
+  private supabase: SupabaseClient;
 
-  constructor(chatManager: ChatManager, storage: UnifiedStorage) {
+  constructor(chatManager: ChatManager, storage: UnifiedStorage, supabase: SupabaseClient) {
     this.chatManager = chatManager;
     this.storage = storage;
+    this.supabase = supabase;
   }
 
   // Create a new conversation
-  async createConversation(req: Request, res: Response): Promise<void> {
+  async createConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { title, user_uuid, company_uuid } = req.body;
+      const { title } = req.body;
 
-      if (!user_uuid) {
-        res.status(400).json({ error: 'user_uuid is required' });
-        return;
+      let userId: string;
+      let companyId: string;
+      let userUuid: string;
+      let companyUuid: string;
+
+      // If authenticated, use authenticated user's info
+      if (req.user && req.profile) {
+        userId = req.user.id.toString();
+        companyId = req.profile.companyId;
+        userUuid = req.user.uuid;
+        companyUuid = req.profile.companyUuid;
+      } else {
+        // For unauthenticated requests, get default company and admin user
+        try {
+          // Get default company (by domain 'default' or first company)
+          const { data: company, error: companyError } = await this.supabase
+            .from('vezlo_companies')
+            .select('id, uuid')
+            .eq('domain', 'default')
+            .single();
+
+          if (companyError || !company) {
+            // Try to get first company if no default company exists
+            const { data: firstCompany } = await this.supabase
+              .from('vezlo_companies')
+              .select('id, uuid')
+              .limit(1)
+              .single();
+
+            if (!firstCompany) {
+              res.status(400).json({
+                error: 'Cannot create conversation',
+                message: 'No company found. Please run the setup command to create a default company first.'
+              });
+              return;
+            }
+
+            companyId = firstCompany.id.toString();
+            companyUuid = firstCompany.uuid;
+          } else {
+            companyId = company.id.toString();
+            companyUuid = company.uuid;
+          }
+
+          // Get admin user for the company
+          const { data: profile, error: profileError } = await this.supabase
+            .from('vezlo_user_company_profiles')
+            .select(`
+              user_id,
+              vezlo_users!inner (
+                id,
+                uuid
+              )
+            `)
+            .eq('company_id', parseInt(companyId))
+            .eq('role', 'admin')
+            .eq('status', 'active')
+            .limit(1)
+            .single();
+
+          if (profileError || !profile || !profile.vezlo_users) {
+            res.status(400).json({
+              error: 'Cannot create conversation',
+              message: 'No admin user found for the company. Please run the setup command to create a default admin user first.'
+            });
+            return;
+          }
+
+          const user = Array.isArray(profile.vezlo_users) ? profile.vezlo_users[0] : profile.vezlo_users;
+          userId = user.id.toString();
+          userUuid = user.uuid;
+        } catch (error) {
+          logger.error('Error fetching default company/user:', error);
+          res.status(500).json({
+            error: 'Failed to create conversation',
+            message: 'Error fetching default company and user'
+          });
+          return;
+        }
       }
 
       // Generate a unique thread ID for the conversation
@@ -27,8 +107,8 @@ export class ChatController {
       
       const conversation = await this.storage.saveConversation({
         threadId,
-        userId: user_uuid.toString(),
-        organizationId: company_uuid?.toString(),
+        userId,
+        organizationId: companyId,
         title: title || 'New Conversation',
         messageCount: 0,
         createdAt: new Date(),
@@ -38,11 +118,10 @@ export class ChatController {
       res.json({
         uuid: conversation.id,
         title: conversation.title,
-        user_uuid: conversation.userId,
-        company_uuid: conversation.organizationId,
+        user_uuid: userUuid,
+        company_uuid: companyUuid,
         message_count: conversation.messageCount,
-        created_at: conversation.createdAt,
-        updated_at: conversation.updatedAt
+        created_at: conversation.createdAt
       });
 
     } catch (error) {
@@ -104,7 +183,7 @@ export class ChatController {
   }
 
   // Generate AI response for a user message
-  async generateResponse(req: Request, res: Response): Promise<void> {
+  async generateResponse(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { uuid } = req.params;
 
@@ -122,17 +201,56 @@ export class ChatController {
       // Get conversation context (recent messages)
       const messages = await this.storage.getMessages(conversationId, 10);
       
+      // Get knowledge base search results if available
+      const aiService = (this.chatManager as any).aiService;
+      let knowledgeResults = '';
+      
+      // Get conversation to extract company_id for knowledge base search
+      const conversation = await this.storage.getConversation(conversationId);
+      const companyId = (req as AuthenticatedRequest).profile?.companyId || conversation?.organizationId;
+      
+      if (aiService && aiService.knowledgeBaseService) {
+        try {
+          console.log('🔍 Searching knowledge base for:', userMessageContent);
+          console.log('🔑 Company ID:', companyId);
+          
+          const searchResults = await aiService.knowledgeBaseService.search(userMessageContent, {
+            limit: 3,
+            threshold: 0.7,
+            type: 'hybrid',
+            company_id: companyId ? parseInt(companyId) : undefined
+          });
+
+          console.log('📊 Found knowledge base results:', searchResults.length);
+
+          if (searchResults.length > 0) {
+            knowledgeResults = '\n\nRelevant information from knowledge base:\n';
+            searchResults.forEach((result: any) => {
+              knowledgeResults += `- ${result.title}: ${result.content}\n`;
+            });
+            console.log('✅ Knowledge context prepared:', knowledgeResults.substring(0, 200));
+          } else {
+            console.log('⚠️  No knowledge base results found');
+          }
+        } catch (error) {
+          console.error('❌ Failed to search knowledge base:', error);
+          logger.error('Failed to search knowledge base:', error);
+        }
+      } else {
+        console.log('⚠️  AI service or knowledge base service not available');
+      }
+      
       // Build context for AI
       const chatContext = {
         conversationHistory: messages.map(msg => ({
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          createdAt: msg.createdAt
-        }))
+          content: msg.content
+        })),
+        knowledgeResults
       };
 
       // Generate AI response using the actual user message content
-      const response = await (this.chatManager as any).aiService.generateResponse(userMessageContent, chatContext);
+      const response = await aiService.generateResponse(userMessageContent, chatContext);
 
       // Save AI message to database
       // Note: The storage layer will handle UUID to internal ID conversion
@@ -146,8 +264,7 @@ export class ChatController {
         createdAt: new Date()
       });
 
-      // Update conversation message count
-      const conversation = await this.storage.getConversation(conversationId);
+      // Update conversation message count (conversation already fetched above)
       if (conversation) {
         await this.storage.updateConversation(conversationId, {
           messageCount: conversation.messageCount + 1
@@ -192,7 +309,6 @@ export class ChatController {
         company_uuid: conversation.organizationId,
         message_count: conversation.messageCount,
         created_at: conversation.createdAt,
-        updated_at: conversation.updatedAt,
         messages: messages.map(msg => ({
           uuid: msg.id,
           parent_message_uuid: msg.parentMessageId,
@@ -213,25 +329,24 @@ export class ChatController {
   }
 
   // Get user conversations (renamed from getUserConversations)
-  async getUserConversations(req: Request, res: Response): Promise<void> {
+  async getUserConversations(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
-      const { company_uuid } = req.query;
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
+        return;
+      }
 
       const conversations = await this.storage.getUserConversations(
-        uuid,
-        company_uuid as string
+        req.user!.id,
+        req.profile?.companyId || undefined
       );
 
       res.json({
         conversations: conversations.map(conversation => ({
           uuid: conversation.id,
           title: conversation.title,
-          user_uuid: conversation.userId,
-          company_uuid: conversation.organizationId,
           message_count: conversation.messageCount,
-          created_at: conversation.createdAt,
-          updated_at: conversation.updatedAt
+          created_at: conversation.createdAt
         }))
       });
 
@@ -267,12 +382,17 @@ export class ChatController {
   }
 
   // Submit message feedback
-  async submitFeedback(req: Request, res: Response): Promise<void> {
+  async submitFeedback(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { message_uuid, user_uuid, rating, category, comment, suggested_improvement } = req.body;
+      const { message_uuid, rating, category, comment, suggested_improvement } = req.body;
 
-      if (!message_uuid || !user_uuid || !rating) {
-        res.status(400).json({ error: 'message_uuid, user_uuid, and rating are required' });
+      if (!message_uuid || !rating) {
+        res.status(400).json({ error: 'message_uuid and rating are required' });
+        return;
+      }
+
+      if (!req.profile) {
+        res.status(401).json({ error: 'Authentication required' });
         return;
       }
 
@@ -285,8 +405,8 @@ export class ChatController {
 
       const feedback = await this.storage.saveFeedback({
         messageId: message_uuid,
-        conversationId: message.conversationId, // Use the actual conversationId from the message
-        userId: user_uuid.toString(),
+        conversationId: message.conversationId,
+        userId: req.user!.id,
         rating,
         category,
         comment,
@@ -299,7 +419,6 @@ export class ChatController {
         feedback: {
           uuid: feedback.id,
           message_uuid: feedback.messageId,
-          user_uuid: feedback.userId,
           rating: feedback.rating,
           category: feedback.category,
           comment: feedback.comment,
