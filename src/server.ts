@@ -1206,7 +1206,7 @@ async function start() {
 function validateConfig() {
   const requiredEnvVars = [
     'SUPABASE_URL',
-    'SUPABASE_ANON_KEY',
+    'SUPABASE_SERVICE_KEY',
     'OPENAI_API_KEY'
   ];
 
