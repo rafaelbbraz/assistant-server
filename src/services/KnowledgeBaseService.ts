@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import logger from '../config/logger';
 
 interface KnowledgeBaseConfig {
   supabase: SupabaseClient;
@@ -316,8 +317,12 @@ export class KnowledgeBaseService {
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
     try {
       const limit = options.limit || 5;
-      const threshold = options.threshold || 0.7;
-      const type = options.type || 'hybrid';
+      // Balanced precision/recall (0.5 is industry standard)
+      const threshold = options.threshold || 0.5;
+      const type = options.type || 'semantic'; // Modern RAG best practice: semantic-first
+
+      // Reduced logging - only essential info
+      logger.info(`🔎 Search: type=${type}, threshold=${threshold}, limit=${limit}, companyId=${options.company_id ?? 'all'}`);
 
       if (type === 'semantic') {
         return await this.semanticSearch(query, limit, threshold, options.company_id);
@@ -334,10 +339,13 @@ export class KnowledgeBaseService {
           index === self.findIndex(t => t.id === item.id)
         );
         
+        logger.info(`📊 Hybrid: ${semanticResults.length} semantic + ${keywordResults.length} keyword = ${unique.length} total`);
+        
         return unique.slice(0, limit);
       }
 
     } catch (error) {
+      console.error('Search error:', error);
       throw new Error(`Failed to search knowledge items: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -345,65 +353,56 @@ export class KnowledgeBaseService {
   private async semanticSearch(query: string, limit: number, threshold: number, companyId?: number): Promise<SearchResult[]> {
     try {
       const queryEmbedding = await this.generateEmbedding(query);
-      if (!queryEmbedding) return [];
-
-      // Get all items with embeddings from database
-      let dbQuery = this.supabase
-        .from(this.tableName)
-        .select('uuid, title, description, content, type, metadata, embedding')
-        .not('embedding', 'is', null);
-
-      if (companyId) {
-        dbQuery = dbQuery.eq('company_id', companyId);
+      if (!queryEmbedding) {
+        logger.error('Failed to generate query embedding');
+        return [];
       }
 
-      const { data, error } = await dbQuery;
-
-      if (error) throw new Error(`Semantic search failed: ${error.message}`);
-
-      // Calculate cosine similarity for each item (same as original implementation)
-      const results: SearchResult[] = [];
-
-      data.forEach((item: any) => {
-        if (item.embedding) {
-          // Ensure embedding is an array of numbers
-          let embedding = item.embedding;
-          if (typeof embedding === 'string') {
-            try {
-              embedding = JSON.parse(embedding);
-            } catch (e) {
-              console.error('Failed to parse embedding string:', e);
-              return;
-            }
-          }
-          
-          if (Array.isArray(embedding) && embedding.length > 0) {
-            const similarity = this.cosineSimilarity(queryEmbedding, embedding);
-            
-            if (similarity >= threshold) {
-              results.push({
-                id: item.uuid,
-                title: item.title,
-                description: item.description,
-                content: item.content,
-                type: item.type,
-                score: similarity,
-                metadata: item.metadata
-              });
-            }
-          } else {
-            console.error('Invalid embedding format for item:', item.uuid);
-          }
-        }
+      // Use optimized RPC function for vector search
+      // This uses pgvector's <=> operator directly in the database for efficient
+      // nearest-neighbor search, avoiding the need to fetch all records and calculate
+      // similarity in Node.js
+      const { data, error } = await this.supabase.rpc('match_vezlo_knowledge', {
+        query_embedding: queryEmbedding,
+        match_threshold: threshold,
+        match_count: limit,
+        filter_company_id: companyId !== undefined ? companyId : null
       });
 
-      // Sort by similarity score and limit results
-      return results
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+      if (error) {
+        logger.error('RPC vector search error:', error);
+        throw new Error(`Semantic search failed: ${error.message}`);
+      }
+
+      if (!data || data.length === 0) {
+        logger.warn(`⚠️  No items found in DB for companyId=${companyId ?? 'all'}`);
+        return [];
+      }
+
+      logger.info(`📦 RPC returned ${data.length} items`);
+
+      // Transform RPC results to SearchResult format
+      const results: SearchResult[] = data.map((item: any) => ({
+        id: item.uuid,
+        title: item.title,
+        description: item.description,
+        content: item.content,
+        type: item.type,
+        score: item.similarity,
+        metadata: item.metadata
+      }));
+
+      // Log results summary
+      if (results.length > 0) {
+        const topResults = results.slice(0, 3);
+        const topScores = topResults.map(r => `${r.title}:${r.score.toFixed(2)}`).join(', ');
+        logger.info(`✅ Found ${results.length} results above threshold (top: ${topScores})`);
+      }
+
+      return results;
 
     } catch (error) {
-      console.error('Semantic search error:', error);
+      logger.error('Semantic search error:', error);
       return [];
     }
   }
