@@ -33,12 +33,14 @@ RUN adduser -S vezlo -u 1001
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies + ts-node for migrations
-RUN npm ci --only=production && npm install ts-node && npm cache clean --force
+# Install only production dependencies (compiled migrations are used at runtime)
+RUN npm ci --only=production && npm cache clean --force
 
-# Copy built application, migrations, and scripts from builder
+# Copy built application (dist) and compiled migrations/knexfile from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/migrations ./src/migrations
+COPY --from=builder /app/dist/src/migrations ./src/migrations
+# Copy knexfile (compiled JS + TS source for reference)
+COPY --from=builder /app/dist/knexfile.js ./knexfile.js
 COPY --from=builder /app/knexfile.ts ./knexfile.ts
 COPY --from=builder /app/scripts ./scripts
 
