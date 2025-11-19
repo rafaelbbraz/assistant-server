@@ -227,7 +227,6 @@ Deploy to Vercel's serverless platform with multiple options. The Marketplace in
 1. Run the migration URL: `https://your-project.vercel.app/api/migrate?key=YOUR_MIGRATION_SECRET`
 2. Verify deployment: `https://your-project.vercel.app/health`
 3. Access API docs: `https://your-project.vercel.app/docs`
-
 ### Option 2: One-Click Deploy Button
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vezlo/assistant-server&integration-ids=oac_f2GcBt8U4FhiVJ4qWv5PYMEZ)
@@ -255,6 +254,7 @@ vercel
 1. Supabase project (URL, Service Role key, DB host/port/name/user/password)
 2. OpenAI API key
 3. If not using the Marketplace, add environment variables in Vercel project settings
+4. Disable Vercel Deployment Protection if the API needs to be publicly accessible; otherwise Vercel shows its SSO page and the browser never reaches your server.
 
 See [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md) for detailed deployment guide.
 
