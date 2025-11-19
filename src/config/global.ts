@@ -65,6 +65,18 @@ export interface GlobalConfig {
   };
 }
 
+const getDefaultCorsOrigins = () => {
+  if (!process.env.CORS_ORIGINS) {
+    return [];
+  }
+
+  const parsedOrigins = process.env.CORS_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return parsedOrigins;
+};
+
 // Default configuration
 export const defaultConfig: GlobalConfig = {
   app: {
@@ -112,7 +124,7 @@ export const defaultConfig: GlobalConfig = {
   },
   cors: {
     enabled: true,
-    origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:3001'],
+    origins: getDefaultCorsOrigins(),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true
   },

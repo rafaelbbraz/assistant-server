@@ -39,8 +39,8 @@ const io = new SocketIOServer(server, {
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || '*',
-  credentials: true
+  origin: globalConfig.cors.origins.length ? globalConfig.cors.origins : true,
+  credentials: globalConfig.cors.credentials
 }));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));

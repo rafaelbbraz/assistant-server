@@ -44,8 +44,8 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || '*',
-  credentials: true
+  origin: globalConfig.cors.origins.length ? globalConfig.cors.origins : true,
+  credentials: globalConfig.cors.credentials
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
