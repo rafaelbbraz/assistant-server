@@ -102,7 +102,12 @@ export class MessageRepository {
     }
   }
 
-  async getMessages(conversationId: string, limit = 50, offset = 0): Promise<StoredChatMessage[]> {
+  async getMessages(
+    conversationId: string,
+    limit = 50,
+    offset = 0,
+    options: { order?: 'asc' | 'desc'; types?: string[] } = {}
+  ): Promise<StoredChatMessage[]> {
     const tableName = this.getTableName('messages');
     
     // First get the conversation internal ID
@@ -116,11 +121,20 @@ export class MessageRepository {
       throw new Error(`Failed to find conversation: ${conversationQuery.error.message}`);
     }
 
-    const { data, error } = await this.supabase
+    const ascending = options.order !== 'desc';
+
+    let query = this.supabase
       .from(tableName)
       .select('*')
-      .eq('conversation_id', conversationQuery.data.id)
-      .order('created_at', { ascending: true })
+      .eq('conversation_id', conversationQuery.data.id);
+
+    // Filter by message types if specified
+    if (options.types && options.types.length > 0) {
+      query = query.in('type', options.types);
+    }
+
+    const { data, error } = await query
+      .order('created_at', { ascending })
       .range(offset, offset + limit - 1);
 
     if (error) throw new Error(`Failed to get messages: ${error.message}`);

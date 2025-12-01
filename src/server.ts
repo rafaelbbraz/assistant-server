@@ -10,7 +10,7 @@ import { specs, swaggerUiOptions } from './config/swagger';
 import { config as globalConfig } from './config/global';
 import logger from './config/logger';
 import { errorHandler, notFoundHandler, asyncHandler } from './middleware/errorHandler';
-import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey } from './middleware/auth';
+import { authenticateUser, authenticateApiKey, authenticateUserOrApiKey, AuthenticatedRequest } from './middleware/auth';
 import { ChatController } from './controllers/ChatController';
 import { KnowledgeController } from './controllers/KnowledgeController';
 import { AuthController } from './controllers/AuthController';
@@ -18,13 +18,14 @@ import { ApiKeyController } from './controllers/ApiKeyController';
 import { runMigrations, getMigrationStatus } from './config/knex';
 import { createClient } from '@supabase/supabase-js';
 import { initializeCoreServices } from './bootstrap/initializeServices';
+import { RealtimePublisher } from './services/RealtimePublisher';
 
 // Initialize Supabase client - use SERVICE_KEY for server-side operations
 // Service key bypasses RLS and is required for API key authentication
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!
-);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const realtimePublisher = new RealtimePublisher(supabaseUrl, supabaseServiceKey);
 
 // Initialize Express app
 const app = express();
@@ -91,6 +92,7 @@ async function initializeServices() {
     chatController = controllers.chatController;
     knowledgeController = controllers.knowledgeController;
     authController = controllers.authController;
+    authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
 
     logger.info('All services initialized successfully');
@@ -291,6 +293,51 @@ app.get('/api/api-keys/status', authenticateUser(supabase), (req, res) => apiKey
 /**
  * @swagger
  * /api/conversations:
+ *   get:
+ *     summary: List conversations
+ *     description: Returns paginated conversations for the authenticated workspace.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number (1-indexed)
+ *       - in: query
+ *         name: page_size
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of conversations per page (max 100)
+ *       - in: query
+ *         name: order_by
+ *         schema:
+ *           type: string
+ *           enum: [last_message_at, created_at]
+ *           default: last_message_at
+ *         description: Sort conversations by latest activity or creation time (always descending)
+ *     responses:
+ *       200:
+ *         description: Conversations retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ConversationListResponse'
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/conversations', authenticateUser(supabase), (req, res) =>
+  chatController.getUserConversations(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations:
  *   post:
  *     summary: Create a new conversation
  *     description: Create a new conversation (Public API - No authentication required)
@@ -320,8 +367,10 @@ app.post('/api/conversations', (req, res) => chatController.createConversation(r
  * /api/conversations/{uuid}:
  *   get:
  *     summary: Get conversation by UUID
- *     description: Retrieve a specific conversation by its UUID (Public API - No authentication required)
+ *     description: Retrieve a specific conversation (requires authentication and workspace membership).
  *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: uuid
@@ -338,10 +387,192 @@ app.post('/api/conversations', (req, res) => chatController.createConversation(r
  *               $ref: '#/components/schemas/GetConversationResponse'
  *       404:
  *         description: Conversation not found
+ *       401:
+ *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
-app.get('/api/conversations/:uuid', (req, res) => chatController.getConversation(req, res));
+app.get('/api/conversations/:uuid', authenticateUser(supabase), (req, res) =>
+  chatController.getConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/messages:
+ *   get:
+ *     summary: List conversation messages
+ *     description: Retrieve paginated messages for a conversation.
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Message page number (1-indexed)
+ *       - in: query
+ *         name: page_size
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Messages per page (max 200)
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order by creation time (descending shows newest first)
+ *     responses:
+ *       200:
+ *         description: Messages retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ConversationMessagesResponse'
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/conversations/:uuid/messages', authenticateUser(supabase), (req, res) =>
+  chatController.getConversationMessages(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/join:
+ *   post:
+ *     summary: Join conversation
+ *     description: Agent joins a conversation, sets joined_at timestamp, creates a system message, and publishes realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Successfully joined conversation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: object
+ *                   properties:
+ *                     uuid:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     author_id:
+ *                       type: integer
+ *                     created_at:
+ *                       type: string
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/join', authenticateUser(supabase), (req, res) =>
+  chatController.joinConversation(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/messages/agent:
+ *   post:
+ *     summary: Send agent message
+ *     description: Agent sends a message in a conversation and publishes realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Agent message sent successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/messages/agent', authenticateUser(supabase), (req, res) =>
+  (chatController as any).sendAgentMessage(req as AuthenticatedRequest, res)
+);
+
+/**
+ * @swagger
+ * /api/conversations/{uuid}/close:
+ *   post:
+ *     summary: Close conversation
+ *     description: Close a conversation, record a system message, and publish realtime update
+ *     tags: [Chat]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: uuid
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Conversation UUID
+ *     responses:
+ *       200:
+ *         description: Conversation closed successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: Conversation not found
+ *       500:
+ *         description: Internal server error
+ */
+app.post('/api/conversations/:uuid/close', authenticateUser(supabase), (req, res) =>
+  (chatController as any).closeConversation(req as AuthenticatedRequest, res)
+);
 
 /**
  * @swagger
@@ -436,29 +667,6 @@ app.post('/api/conversations/:uuid/messages', (req, res) => chatController.creat
  *         description: Internal server error
  */
 app.post('/api/messages/:uuid/generate', (req, res) => chatController.generateResponse(req, res));
-
-/**
- * @swagger
- * /api/conversations:
- *   get:
- *     summary: Get user conversations
- *     description: Get all conversations for the authenticated user
- *     tags: [Chat]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Conversations retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ConversationListResponse'
- *       401:
- *         description: Not authenticated
- *       500:
- *         description: Internal server error
- */
-app.get('/api/conversations', authenticateUser(supabase), (req, res) => chatController.getUserConversations(req, res));
 
 /**
  * @swagger

@@ -28,6 +28,7 @@ import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
 import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
+import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
 config();
@@ -75,6 +76,7 @@ let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
 let supabase: any;
+let realtimePublisher: RealtimePublisher | null = null;
 
 async function initializeServices() {
   if (servicesInitialized) return;
@@ -86,6 +88,9 @@ async function initializeServices() {
     supabase = initializeSupabase();
     logger.info('Supabase client initialized');
 
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY!;
+    realtimePublisher = new RealtimePublisher(process.env.SUPABASE_URL!, supabaseKey);
+
     const { controllers } = initializeCoreServices({
       supabase,
       tablePrefix: 'vezlo',
@@ -95,6 +100,7 @@ async function initializeServices() {
     chatController = controllers.chatController;
     knowledgeController = controllers.knowledgeController;
     authController = controllers.authController;
+    authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
 
     servicesInitialized = true;
@@ -232,7 +238,21 @@ app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiK
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
-app.get('/api/conversations/:uuid', requireServices, (req, res) => chatController.getConversation(req, res));
+app.get('/api/conversations/:uuid', requireServices, requireAuth, (req, res) =>
+  chatController.getConversation(req, res)
+);
+app.get('/api/conversations/:uuid/messages', requireServices, requireAuth, (req, res) =>
+  (chatController as any).getConversationMessages(req, res)
+);
+app.post('/api/conversations/:uuid/join', requireServices, requireAuth, (req, res) =>
+  (chatController as any).joinConversation(req, res)
+);
+app.post('/api/conversations/:uuid/messages/agent', requireServices, requireAuth, (req, res) =>
+  (chatController as any).sendAgentMessage(req, res)
+);
+app.post('/api/conversations/:uuid/close', requireServices, requireAuth, (req, res) =>
+  (chatController as any).closeConversation(req, res)
+);
 app.delete('/api/conversations/:uuid', requireServices, requireAuth, (req, res) => chatController.deleteConversation(req, res));
 
 // Message APIs (Public - No Authentication Required for Widget)

@@ -23,9 +23,10 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete migration guide.
 ## 🏗️ Architecture
 
 - **Backend APIs** - RESTful API endpoints for AI chat and knowledge management
-- **Real-time Communication** - WebSocket support for live chat
+- **Real-time Communication** - WebSocket support for live chat with Supabase Realtime broadcasting
+- **Human Agent Handoff** - Agent join/leave workflows with realtime status updates and message synchronization
 - **Vector Search** - Supabase-powered semantic search with embeddings
-- **Conversation Management** - Persistent conversation history
+- **Conversation Management** - Persistent conversation history with agent support
 - **Feedback System** - Message rating and improvement tracking
 - **Database Migrations** - Knex.js migration system for schema management
 - **Production Ready** - Docker containerization with health checks
@@ -365,10 +366,13 @@ http://localhost:3000/api
 ### Core Endpoints
 
 #### Conversations
-- `POST /api/conversations` - Create new conversation
+- `POST /api/conversations` - Create new conversation (public widget endpoint)
+- `GET /api/conversations` - List company conversations (agent dashboard)
 - `GET /api/conversations/:uuid` - Get conversation with messages
 - `DELETE /api/conversations/:uuid` - Delete conversation
-- `GET /api/users/:uuid/conversations` - Get user conversations
+- `POST /api/conversations/:uuid/join` - Agent joins a conversation
+- `POST /api/conversations/:uuid/messages/agent` - Agent sends a message
+- `POST /api/conversations/:uuid/close` - Agent closes a conversation
 
 #### Messages
 - `POST /api/conversations/:uuid/messages` - Create user message
