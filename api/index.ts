@@ -45,7 +45,17 @@ const app = express();
 app.use(helmet({
   contentSecurityPolicy: false, // Vercel handles this
 }));
-app.use(compression());
+// Compression middleware - disable for SSE streams
+app.use(compression({
+  filter: (req, res) => {
+    // Don't compress Server-Sent Events
+    if (res.getHeader('Content-Type') === 'text/event-stream') {
+      return false;
+    }
+    // Use default compression filter for everything else
+    return compression.filter(req, res);
+  }
+}));
 app.use(cors({
   origin: globalConfig.cors.origins.length ? globalConfig.cors.origins : true,
   credentials: globalConfig.cors.credentials
@@ -264,8 +274,9 @@ app.post('/api/messages/:uuid/generate', requireServices, (req, res) => chatCont
 // Conversation list (moved to match server.ts order)
 app.get('/api/conversations', requireServices, requireAuth, (req, res) => chatController.getUserConversations(req, res));
 
-// Feedback API
-app.post('/api/feedback', requireServices, requireAuth, (req, res) => chatController.submitFeedback(req, res));
+// Feedback API (Public - no auth required)
+app.post('/api/feedback', requireServices, (req, res) => chatController.submitFeedback(req, res));
+app.delete('/api/feedback/:uuid', requireServices, (req, res) => chatController.deleteFeedback(req, res));
 
 // Knowledge Base APIs
 app.post('/api/knowledge/items', requireServices, requireUserOrApiKey, (req, res) => knowledgeController.createItem(req, res));
