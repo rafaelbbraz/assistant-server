@@ -28,6 +28,7 @@ import { ChatController } from '../dist/src/controllers/ChatController';
 import { KnowledgeController } from '../dist/src/controllers/KnowledgeController';
 import { AuthController } from '../dist/src/controllers/AuthController';
 import { ApiKeyController } from '../dist/src/controllers/ApiKeyController';
+import { CompanyController } from '../dist/src/controllers/CompanyController';
 import { RealtimePublisher } from '../dist/src/services/RealtimePublisher';
 
 // Load environment variables
@@ -87,6 +88,7 @@ let chatController: ChatController;
 let knowledgeController: KnowledgeController;
 let authController: AuthController;
 let apiKeyController: ApiKeyController;
+let companyController: CompanyController;
 let supabase: any;
 let realtimePublisher: RealtimePublisher | null = null;
 
@@ -114,6 +116,7 @@ async function initializeServices() {
     authController = controllers.authController;
     authController.setRealtimePublisher(realtimePublisher);
     apiKeyController = controllers.apiKeyController;
+    companyController = controllers.companyController;
 
     servicesInitialized = true;
     logger.info('All services initialized successfully');
@@ -247,6 +250,69 @@ app.get('/api/auth/me', requireServices, requireAuth, (req, res) => authControll
 // API Key Management APIs
 app.post('/api/api-keys', requireServices, requireAuth, (req, res) => apiKeyController.generateApiKey(req, res));
 app.get('/api/api-keys/status', requireServices, requireAuth, (req, res) => apiKeyController.getApiKeyStatus(req, res));
+
+// Company APIs
+/**
+ * @swagger
+ * /api/company/analytics:
+ *   get:
+ *     summary: Get company analytics
+ *     description: Returns analytics data for the authenticated company including conversation stats, user counts, message volume, and feedback.
+ *     tags: [Company]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Analytics data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 conversations:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     open:
+ *                       type: integer
+ *                     closed:
+ *                       type: integer
+ *                 users:
+ *                   type: object
+ *                   properties:
+ *                     total_active_users:
+ *                       type: integer
+ *                 messages:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Total messages across all types
+ *                     user_messages_total:
+ *                       type: integer
+ *                       description: Total user messages
+ *                     assistant_messages_total:
+ *                       type: integer
+ *                       description: Total AI assistant messages
+ *                     agent_messages_total:
+ *                       type: integer
+ *                       description: Total human agent messages
+ *                 feedback:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     likes:
+ *                       type: integer
+ *                     dislikes:
+ *                       type: integer
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Internal server error
+ */
+app.get('/api/company/analytics', requireServices, requireAuth, (req, res) => companyController.getAnalytics(req, res));
 
 // Conversation APIs (Public - No Authentication Required for Widget)
 app.post('/api/conversations', requireServices, (req, res) => chatController.createConversation(req, res));
