@@ -1,4 +1,4 @@
-## [2.7.0] - 2025-01-09
+## [2.7.0] - 2025-12-16
 
 ### Added
 - **Archive Conversations**: New `POST /api/conversations/:uuid/archive` endpoint to archive closed conversations
