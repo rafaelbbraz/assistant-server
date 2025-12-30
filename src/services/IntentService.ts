@@ -87,13 +87,15 @@ export class IntentService {
     // Use all provided history (already limited by CHAT_HISTORY_LENGTH in ChatController)
     // No need to trim further - respect the configured limit
 
+    const intentList = '["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email"]';
+
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
       role: 'system',
       content: `You are an intent classifier for ${this.assistantName}, the AI assistant for ${this.organizationName}. 
 Your job is to analyse the latest user message (with short conversation history) and decide how the assistant should respond.
 
 Return a JSON object with:
-- intent: one of ["knowledge","greeting","acknowledgment","personality","clarification","guardrail","human_support_request","human_support_email"]
+- intent: one of ${intentList}
 - reason: brief justification
 - response: a natural, contextual assistant response appropriate for this intent (ONLY for non-knowledge intents; leave empty for "knowledge")
 - needs_guardrail: true if the user is requesting sensitive credentials or configuration
