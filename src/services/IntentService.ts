@@ -18,7 +18,6 @@ interface IntentServiceConfig {
   model?: string;
   assistantName?: string;
   organizationName?: string;
-  databaseToolsEnabled?: boolean;
 }
 
 export interface IntentClassificationResult {
@@ -48,7 +47,6 @@ export class IntentService {
   private model: string;
   private assistantName: string;
   private organizationName: string;
-  private databaseToolsEnabled: boolean;
 
   constructor(config: IntentServiceConfig) {
     this.openai = new OpenAI({
@@ -57,7 +55,6 @@ export class IntentService {
     this.model = config.model || 'gpt-4o-mini';
     this.assistantName = config.assistantName || 'AI Assistant';
     this.organizationName = config.organizationName || 'Your Organization';
-    this.databaseToolsEnabled = config.databaseToolsEnabled || false;
   }
 
   async classify(input: ClassificationInput): Promise<IntentClassificationResult> {

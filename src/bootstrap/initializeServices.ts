@@ -147,8 +147,7 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     openaiApiKey: process.env.OPENAI_API_KEY!,
     model: aiModel,
     assistantName: process.env.ASSISTANT_NAME,
-    organizationName: process.env.ORGANIZATION_NAME,
-    databaseToolsEnabled: process.env.EXTERNAL_DB_ENABLED === 'true'
+    organizationName: process.env.ORGANIZATION_NAME
   });
 
   // Initialize realtime publisher if env vars are available
