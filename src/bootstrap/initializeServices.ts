@@ -17,6 +17,9 @@ import { RealtimePublisher } from '../services/RealtimePublisher';
 import { SlackService } from '../services/SlackService';
 import { SlackController } from '../controllers/SlackController';
 import { ValidationService } from '../services/ValidationService';
+import { DatabaseToolService } from '../services/DatabaseToolService';
+import { DatabaseToolConfigService } from '../services/DatabaseToolConfigService';
+import { DatabaseToolConfigController } from '../controllers/DatabaseToolConfigController';
 
 export interface ServiceInitOptions {
   supabase: SupabaseClient;
@@ -37,6 +40,8 @@ export interface InitializedCoreServices {
     citationService: CitationService;
     slackService: SlackService;
     validationService: ValidationService;
+    databaseToolService: any;
+    databaseToolConfigService: DatabaseToolConfigService;
   };
   controllers: {
     chatController: ChatController;
@@ -45,6 +50,7 @@ export interface InitializedCoreServices {
     apiKeyController: ApiKeyController;
     companyController: CompanyController;
     slackController: SlackController;
+    databaseToolConfigController: DatabaseToolConfigController;
   };
   config: {
     chatHistoryLength: number;
@@ -118,6 +124,13 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     knowledgeBaseService: knowledgeBase
   });
 
+  // Initialize Database Tool Config service
+  const databaseToolConfigService = new DatabaseToolConfigService(supabase);
+
+  // Initialize external database tool service (dynamic)
+  const databaseToolService = new DatabaseToolService(supabase, databaseToolConfigService);
+  aiService.setDatabaseToolService(databaseToolService);
+  logger.info('✅ Dynamic database tool service initialized');
 
   // Set V2 service for adjacent chunk retrieval
 
@@ -134,7 +147,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     openaiApiKey: process.env.OPENAI_API_KEY!,
     model: aiModel,
     assistantName: process.env.ASSISTANT_NAME,
-    organizationName: process.env.ORGANIZATION_NAME
+    organizationName: process.env.ORGANIZATION_NAME,
+    databaseToolsEnabled: process.env.EXTERNAL_DB_ENABLED === 'true'
   });
 
   // Initialize realtime publisher if env vars are available
@@ -158,7 +172,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
     historyLength: resolvedHistoryLength,
     intentService,
     realtimePublisher,
-    validationService
+    validationService,
+    databaseToolService
   });
 
   const knowledgeController = new KnowledgeController(knowledgeBase, aiService, citationService);
@@ -172,6 +187,9 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
   const slackService = new SlackService();
   const slackController = new SlackController(slackService, chatManager, storage, resolvedHistoryLength);
 
+  // Initialize Database Tool Config controller (pass both services for cache management)
+  const databaseToolConfigController = new DatabaseToolConfigController(databaseToolConfigService, databaseToolService);
+
   return {
     services: {
       storage,
@@ -182,7 +200,9 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       apiKeyService,
       companyService,
       slackService,
-      validationService
+      databaseToolService,
+      validationService,
+      databaseToolConfigService
     },
     controllers: {
       chatController,
@@ -190,7 +210,8 @@ export function initializeCoreServices(options: ServiceInitOptions): Initialized
       authController,
       apiKeyController,
       companyController,
-      slackController
+      slackController,
+      databaseToolConfigController
     },
     config: {
       chatHistoryLength: resolvedHistoryLength

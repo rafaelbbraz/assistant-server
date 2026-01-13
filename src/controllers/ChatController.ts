@@ -10,6 +10,7 @@ import { RealtimePublisher } from '../services/RealtimePublisher';
 import { ResponseGenerationService } from '../services/ResponseGenerationService';
 import { ResponseStreamingService } from '../services/ResponseStreamingService';
 import { ValidationService } from '../services/ValidationService';
+import { DatabaseToolService } from '../services/DatabaseToolService';
 
 export class ChatController {
   private chatManager: ChatManager;
@@ -21,12 +22,13 @@ export class ChatController {
   private responseGenerationService: ResponseGenerationService;
   private responseStreamingService: ResponseStreamingService;
   private validationService?: ValidationService;
+  private databaseToolService?: DatabaseToolService;
 
   constructor(
     chatManager: ChatManager,
     storage: UnifiedStorage,
     supabase: SupabaseClient,
-    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService } = {}
+    options: { historyLength?: number; intentService?: IntentService; realtimePublisher?: RealtimePublisher; validationService?: ValidationService; databaseToolService?: DatabaseToolService } = {}
   ) {
     this.chatManager = chatManager;
     this.storage = storage;
@@ -36,13 +38,15 @@ export class ChatController {
     this.intentService = options.intentService;
     this.realtimePublisher = options.realtimePublisher;
     this.validationService = options.validationService;
+    this.databaseToolService = options.databaseToolService;
     
     // Initialize services
     const aiService = (chatManager as any).aiService;
     this.responseGenerationService = new ResponseGenerationService(
       this.intentService,
       aiService,
-      this.chatHistoryLength
+      this.chatHistoryLength,
+      this.databaseToolService
     );
     this.responseStreamingService = new ResponseStreamingService();
   }
@@ -190,7 +194,7 @@ export class ChatController {
   // Create a user message in a conversation
   async createUserMessage(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const { content } = req.body;
 
       if (!content) {
@@ -278,7 +282,7 @@ export class ChatController {
 
   // Generate AI response for a user message
   async generateResponse(req: AuthenticatedRequest, res: Response): Promise<void> {
-    const { uuid } = req.params;
+    const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
     if (!uuid) {
       res.status(400).json({ error: 'Message UUID is required' });
       return;
@@ -299,6 +303,9 @@ export class ChatController {
 
       const conversationId = userMessage.conversationId;
       const userMessageContent = userMessage.content;
+      
+      // Extract user_context from request body (optional)
+      const userContext = req.body?.user_context || {};
 
       // Get conversation context (recent messages)
       // Exclude the current user message to avoid duplication (it's added separately as the query)
@@ -320,8 +327,9 @@ export class ChatController {
       // Set up Server-Sent Events (SSE) headers for streaming
       this.responseStreamingService.setupSSEHeaders(res);
 
-      // Run intent classification to decide handling strategy
-      const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages);
+      // Run intent classification to decide handling strategy (with dynamic tools)
+      const companyId = conversation?.organizationId ? parseInt(String(conversation.organizationId), 10) : undefined;
+      const intentResult = await this.responseGenerationService.classifyIntent(userMessageContent, messages, companyId);
       const intentResponse = this.responseGenerationService.handleIntentResult(intentResult, userMessageContent);
 
       let accumulatedContent = '';
@@ -329,8 +337,79 @@ export class ChatController {
       let sources: Array<{ document_uuid: string; document_title: string; chunk_indices: number[] }> = [];
 
       try {
-        // If intent returned a response (non-knowledge intent), stream it
-        if (intentResponse) {
+        // Handle database_tool intent separately
+        if (intentResult.intent === 'database_tool' && intentResult.toolCall) {
+          logger.info(`🔧 Database tool call detected: ${intentResult.toolCall.toolName}`);
+          
+          if (!this.databaseToolService || !companyId) {
+            logger.warn('⚠️ Database tool requested but service not available or no company ID');
+            await this.responseStreamingService.streamTextContent(
+              'I apologize, but I cannot access your data at the moment. Please contact support.',
+              res
+            );
+            accumulatedContent = 'I apologize, but I cannot access your data at the moment. Please contact support.';
+          } else {
+            // Execute tool with dynamic parameters and user context
+            logger.info(`🔧 Executing tool: ${intentResult.toolCall.toolName} for company: ${companyId}`);
+            const toolResult = await this.databaseToolService.executeTool(
+              intentResult.toolCall.toolName,
+              intentResult.toolCall.parameters,
+              companyId,
+              userContext // Pass user context for filtering
+            );
+            
+            // Check if tool execution was successful
+            if (!toolResult.success) {
+              logger.error(`❌ Tool execution failed: ${toolResult.error}`);
+              await this.responseStreamingService.streamTextContent(
+                'I apologize, but I encountered an error accessing your data. Please try again or contact support.',
+                res
+              );
+              accumulatedContent = 'I apologize, but I encountered an error accessing your data. Please try again or contact support.';
+            } else {
+              // Format result with LLM - use direct OpenAI call to bypass system prompt restrictions
+              logger.info('🔧 Formatting tool result with LLM');
+              
+              const aiService = this.responseGenerationService.getAIService();
+              if (!aiService) {
+                throw new Error('AI service not available');
+              }
+              
+              // Direct OpenAI call bypassing the restrictive system prompt
+              const openai = (aiService as any).openai;
+              const modelToUse = process.env.AI_MODEL || 'gpt-4o-mini';
+              
+              const completion = await openai.chat.completions.create({
+                model: modelToUse,
+                messages: [
+                  {
+                    role: 'system',
+                    content: 'You are a helpful assistant. Format database query results naturally and conversationally for the user.'
+                  },
+                  {
+                    role: 'user',
+                    content: `User asked: "${userMessageContent}"
+
+Database returned:
+${JSON.stringify(toolResult.data || toolResult, null, 2)}
+
+Provide a natural, friendly response to the user's question using this data.`
+                  }
+                ],
+                temperature: 0.7,
+                max_tokens: 500
+              });
+              
+              const formattedContent = completion.choices[0]?.message?.content || 'Here is your information.';
+              
+              logger.info('📤 Streaming database tool response');
+              await this.responseStreamingService.streamTextContent(formattedContent, res);
+              accumulatedContent = formattedContent;
+            }
+          }
+        }
+        // If intent returned a response (non-knowledge/non-tool intent), stream it
+        else if (intentResponse) {
           logger.info(`📤 Streaming intent response for: ${intentResult.intent}`);
           await this.responseStreamingService.streamTextContent(intentResponse, res);
           accumulatedContent = intentResponse;
@@ -476,7 +555,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -531,7 +610,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const page = Math.max(1, parseInt((req.query.page as string) || '1', 10) || 1);
       const pageSizeRaw = parseInt((req.query.page_size as string) || '50', 10);
       const pageSize = Math.min(200, Math.max(1, isNaN(pageSizeRaw) ? 50 : pageSizeRaw));
@@ -591,7 +670,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -694,7 +773,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -794,7 +873,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const conversation = await this.storage.getConversation(uuid);
 
       if (!conversation) {
@@ -871,7 +950,7 @@ export class ChatController {
         return;
       }
 
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const { content } = req.body;
 
       if (!content) {
@@ -1033,7 +1112,7 @@ export class ChatController {
   // Delete conversation
   async deleteConversation(req: Request, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
       const success = await this.storage.deleteConversation(uuid);
 
       if (!success) {
@@ -1119,7 +1198,7 @@ export class ChatController {
   // Delete/undo message feedback - Public API
   async deleteFeedback(req: Request | AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { uuid } = req.params;
+      const uuid = Array.isArray(req.params.uuid) ? req.params.uuid[0] : req.params.uuid;
 
       if (!uuid) {
         res.status(400).json({ error: 'Feedback UUID is required' });
